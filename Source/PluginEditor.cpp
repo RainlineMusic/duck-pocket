@@ -468,7 +468,7 @@ void DuckPocketAudioProcessorEditor::frameTick(){
     if(!chromeValid&&resizeStamp>0&&juce::Time::getMillisecondCounterHiRes()-resizeStamp>100)repaint();
     const auto epoch=audioProcessor.traceGeneration.load(std::memory_order_relaxed);
     if(epoch!=traceGeneration){traceGeneration=epoch;cursor=filled=summaryCursor=summaryFilled=0;summaryBin=-1;displayTime=lastClock=lastLatest=gapMax=0;lastPaintedTime=-1;lastVisibleSignalTime=-1;signalPeak=currentReduction=0;for(auto& layer:softwarePlots)layer.reset();triggerStamp=-1;repaint(gainArea);repaint(scopeArea);}
-    PocketTrace v;bool fresh=false;
+    PocketTrace v;bool fresh=false;const float previousPeak=signalPeak;float framePeak=0;
     while(audioProcessor.popTrace(v)){
         if(v.generation!=traceGeneration||!std::isfinite(v.time))continue;
         history[size_t(cursor)]=v;cursor=(cursor+1)%historyCapacity;filled=juce::jmin(filled+1,historyCapacity);
@@ -477,9 +477,10 @@ void DuckPocketAudioProcessorEditor::frameTick(){
         else {auto& s=summaryHistory[size_t((summaryCursor+summaryCapacity-1)%summaryCapacity)];s.keyLo=juce::jmin(s.keyLo,v.keyLo);s.keyHi=juce::jmax(s.keyHi,v.keyHi);s.outLo=juce::jmin(s.outLo,v.outLo);s.outHi=juce::jmax(s.outHi,v.outHi);s.gain=juce::jmin(s.gain,v.gain);s.time=v.time;}
         if(1.f-v.gain-currentReduction>.035f){const auto stamp=juce::Time::getMillisecondCounterHiRes();if(triggerStamp<0||stamp-triggerStamp>180)triggerStamp=stamp;}
         signalPeak=juce::jmax(std::abs(v.keyLo),std::abs(v.keyHi),std::abs(v.outLo),std::abs(v.outHi));currentReduction=1.f-v.gain;
-        if(signalPeak>.004f||currentReduction>.001f)lastVisibleSignalTime=v.time;
+        framePeak=juce::jmax(framePeak,signalPeak);if(signalPeak>.004f||currentReduction>.001f)lastVisibleSignalTime=v.time;
         fresh=true;
     }
+    if(fresh)signalPeak=juce::jmax(framePeak,previousPeak*.78f);
     if(filled>0){
         // Display clock: runs on wall-clock time and is gently steered towards the
         // newest audio timestamp minus a small safety lag. Audio arrives in bursts
