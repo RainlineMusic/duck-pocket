@@ -1,12 +1,14 @@
 #pragma once
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "UIStyle.h"
+#include "GlowRenderer.h"
 
-enum class PocketTheme { Neon, Amber, SolidDark, SolidWhite };
 
 class PocketLook final:public juce::LookAndFeel_V4 {
 public:
     PocketTheme theme=PocketTheme::SolidDark;
+    PocketTokens tokens() const{return PocketTokens::forTheme(theme); }
     bool isDark() const{return theme!=PocketTheme::SolidWhite;}
     bool isNeon() const{return theme==PocketTheme::Neon;}
     bool isAmber() const{return theme==PocketTheme::Amber;}
@@ -60,12 +62,16 @@ public:
     // (e.g. "AUTO"); empty means keep the default infinity glyph.
     ModernDial(PocketLook&,juce::String,juce::String,juce::String,juce::uint32,bool=false,bool=false,bool=false,juce::String={});
     void paint(juce::Graphics&) override;
+    void setMeter(float reduction,float signal){if(std::abs(gr-reduction)>.001f||std::abs(activity-signal)>.005f){gr=reduction;activity=signal;repaint();}}
     void setDurationMode(bool relative){unit=relative?"%":"ms";subtitle=relative?"Key length":"Legacy length";repaint();}
 private:
     PocketLook& look;
     juce::String title,subtitle,unit,infinityLabel;
     juce::uint32 accent;
     bool infinity,infinityAtMin,compact;
+    juce::Image body;
+    PocketTheme bodyTheme=PocketTheme::Neon;
+    float bodyScale=0,gr=0,activity=0;
 };
 
 class DuckPocketAudioProcessorEditor final:public juce::AudioProcessorEditor {
@@ -75,12 +81,21 @@ public:
     void paint(juce::Graphics&) override;
     void paintOverChildren(juce::Graphics&) override;
     void resized() override;
+    void parentHierarchyChanged() override;
 
 private:
     friend struct DuckUiTestAccess;
+#if DUCK_ENABLE_OPENGL
+    std::unique_ptr<PocketGlowRenderer> glowRenderer;
+    double glAttachTime=0;
+    bool glWasReady=false;
+    juce::Graphics* emissionGraphics=nullptr;
+    void setOpenGL(bool enabled,bool persist=true);
+#endif
     using SliderAttachment=juce::AudioProcessorValueTreeState::SliderAttachment;
     DuckPocketAudioProcessor& audioProcessor;
     PocketLook look;
+    juce::TooltipWindow tooltips{this,700};
     ModernDial influence{look,"Influence","Depth","%",0xff5987ff};
     ModernDial duration{look,"Duration","Sidechain length","ms",0xff32d4cb,true,false,false,"AUTO"};
     ModernDial outputGain{look,"Output","dB","dB",0xfff1e84b,false,false,true};
@@ -113,6 +128,9 @@ private:
     void syncDurationMode();
     juce::Image blurredSnapshot,chrome;
     bool chromeValid=false;
+    double lastVisibleSignalTime=-1;
+    float signalPeak=0,currentReduction=0;
+    std::uint64_t paintCount=0,chromeBuildCount=0;
     float chromeScale=1.f;
     juce::Rectangle<int> blurArea,gainArea,scopeArea;
 

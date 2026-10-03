@@ -1,0 +1,39 @@
+#include "PluginEditor.h"
+#include <iostream>
+#include <cstdlib>
+struct DuckUiTestAccess {
+ static void theme(DuckPocketAudioProcessorEditor& e,PocketTheme t){e.setTheme(t,false);}
+ static void tick(DuckPocketAudioProcessorEditor& e){e.frameTick();}
+ static void settle(DuckPocketAudioProcessorEditor& e){e.resizeStamp=0;}
+ static std::uint64_t paints(DuckPocketAudioProcessorEditor& e){return e.paintCount;}
+ static std::uint64_t caches(DuckPocketAudioProcessorEditor& e){return e.chromeBuildCount;}
+#if DUCK_ENABLE_OPENGL
+ static void gl(DuckPocketAudioProcessorEditor& e,bool enabled){e.setOpenGL(enabled,false);}
+ static bool ready(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->ready.load();}
+#endif
+};
+static void check(bool v,const char* message){if(!v){std::cerr<<"FAIL "<<message<<'\n';std::abort();}}
+static void pump(int milliseconds){juce::MessageManager::getInstance()->runDispatchLoopUntil(milliseconds);}
+int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI init;const juce::File output(argc>1?argv[1]:"screenshots");output.createDirectory();
+ DuckPocketAudioProcessor p;p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
+ std::unique_ptr<DuckPocketAudioProcessorEditor> e(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));const bool native=argc>2&&juce::String(argv[2])=="--native";if(native){e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);}e->setSize(960,760);DuckUiTestAccess::settle(*e);
+ const PocketTheme themes[]{PocketTheme::Neon,PocketTheme::SolidDark,PocketTheme::SolidWhite,PocketTheme::Amber};const char* names[]{"neon","dark","white","amber"};
+ juce::MidiBuffer midi;juce::AudioBuffer<float> b(4,64);
+ for(int ti=0;ti<4;++ti)for(int state=0;state<3;++state){p.reset();DuckUiTestAccess::tick(*e);DuckUiTestAccess::theme(*e,themes[ti]);
+  for(int block=0;block<750;++block){for(int i=0;i<64;++i){const int n=block*64+i;const double time=double(n)/48000.,hit=std::fmod(time,.25);
+   const float out=state==0?0:float((state==1?.035:.4)*std::sin(time*6.2831853*83));const float key=state==0?0:float((state==1?.07:.95)*std::exp(-hit/.055)*std::sin(hit*6.2831853*(55+120*std::exp(-hit/.01))));
+   b.setSample(0,i,out);b.setSample(1,i,out*.8f);b.setSample(2,i,key);b.setSample(3,i,key);}
+   p.processBlock(b,midi);if(block%12==0)DuckUiTestAccess::tick(*e);}
+  DuckUiTestAccess::tick(*e);
+  for(int scale:{1,2}){auto start=juce::Time::getMillisecondCounterHiRes();auto image=e->createComponentSnapshot(e->getLocalBounds(),true,float(scale));auto stream=output.getChildFile(juce::String(names[ti])+"-"+juce::String(state)+"-"+juce::String(scale)+"x.png").createOutputStream();check(juce::PNGImageFormat().writeImageToStream(image,*stream),"PNG encoding");stream->flush();
+   std::cout<<names[ti]<<" state="<<state<<" DPI="<<scale<<" capture_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';}
+ }
+ e->createComponentSnapshot(e->getLocalBounds());auto cached=DuckUiTestAccess::caches(*e);for(int i=0;i<20;++i){e->createComponentSnapshot(e->getLocalBounds());}check(DuckUiTestAccess::caches(*e)==cached,"chrome reused when unchanged");
+#if DUCK_ENABLE_OPENGL
+ if(native){DuckUiTestAccess::gl(*e,true);pump(400);DuckUiTestAccess::tick(*e);pump(100);std::cout<<"GL created="<<DuckUiTestAccess::ready(*e)<<'\n';
+ check(DuckUiTestAccess::ready(*e),"GL context/shaders on local Mesa");
+ for(int i=0;i<5;++i){DuckUiTestAccess::gl(*e,false);DuckUiTestAccess::gl(*e,true);pump(100);}
+ DuckUiTestAccess::gl(*e,false);}
+#endif
+ if(native)e->removeFromDesktop();e.reset();std::cout<<"PASS real JUCE theme captures, chrome reuse and GL lifecycle\n";
+}
