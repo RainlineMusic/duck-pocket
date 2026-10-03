@@ -33,6 +33,7 @@ class Engine {
 public:
     // 5 ms of lookahead: the gain starts moving before the transient arrives so the
     // duck fades in instead of cutting the waveform, which is what caused clicks.
+    static double validatedSampleRate(double sr) noexcept {return safeRate(sr);}
     static int latencyForRate(double sr) noexcept { return std::max(1,int(std::ceil(safeRate(sr)*.005))); }
     static float durationGain(double elapsedMs,float lengthMs) noexcept {
         if(lengthMs>=1999.5f)return 1;

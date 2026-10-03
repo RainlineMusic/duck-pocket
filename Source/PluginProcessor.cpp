@@ -54,7 +54,7 @@ void DuckPocketAudioProcessor::prepareToPlay(double sr,int)
 {
     engine.reset(sr,amount->load()*.01f);
     setLatencySamples(engine.latency());
-    decimation=juce::jmax(1,int(pocket::Engine::safeRate(sr)/2400.0));
+    decimation=juce::jmax(1,int(pocket::Engine::validatedSampleRate(sr)/2400.0));
     captured=0;
     capture={};
     traceTime=0;traceGeneration.fetch_add(1,std::memory_order_relaxed);
@@ -100,7 +100,7 @@ void DuckPocketAudioProcessor::processAudio(juce::AudioBuffer<float>& b,juce::Mi
     const auto* keyL=keyChannels>0?key.getReadPointer(0):nullptr;
     const auto* keyR=keyChannels>1?key.getReadPointer(1):keyL;
     const bool show=editorOpen.load(std::memory_order_relaxed);
-    const double step=1./pocket::Engine::safeRate(getSampleRate());
+    const double step=1./pocket::Engine::validatedSampleRate(getSampleRate());
 
     for(int n=0;n<b.getNumSamples();++n)
     {
