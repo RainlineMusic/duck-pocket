@@ -23,10 +23,14 @@ class Engine {
     float fastC=0,slowC=0,releaseC=0,endC=0,slew=0,attackC=0,bypassC=0;
     bool active=false,onsetHighPreviously=false,triggerArmed=true,durationInit=false,strongPreviously=false;
     static float clean(float v) noexcept { return std::isfinite(v)?v:0.f; }
+    // Reject corrupt buffers far outside any representable audio level before
+    // float M/S sums and gains can overflow. Ordinary audio is unchanged.
+    static float cleanInput(float v) noexcept { return std::isfinite(v)&&std::abs(v)<=1.0e12f?v:0.f; }
+    static double safeRate(double sr) noexcept { return std::isfinite(sr)?std::clamp(sr,1.,384000.):48000.; }
 public:
     // 5 ms of lookahead: the gain starts moving before the transient arrives so the
     // duck fades in instead of cutting the waveform, which is what caused clicks.
-    static int latencyForRate(double sr) noexcept { return std::max(1,int(std::ceil(std::max(1.,sr)*.005))); }
+    static int latencyForRate(double sr) noexcept { return std::max(1,int(std::ceil(safeRate(sr)*.005))); }
     static float durationGain(double elapsedMs,float lengthMs) noexcept {
         if(lengthMs>=1999.5f)return 1;
         const double length=std::clamp(double(lengthMs),1.,2000.);
@@ -37,11 +41,11 @@ public:
     Engine(){reset(48000,1);}
     int latency() const noexcept {return lookahead;}
     void reset(double sr,float influence=1) {
-        rate=std::max(1.,sr);lookahead=latencyForRate(rate);
+        rate=safeRate(sr);lookahead=latencyForRate(rate);
         delay.assign(size_t(lookahead+1),{});peaks.assign(size_t(lookahead+2),{});
         write=head=tail=0;clock=age=0;refractory=quiet=rearmQuiet=0;
         filter.reset(rate);processingFilter.reset(rate);
-        amount=targetAmount=std::clamp(influence,0.f,1.5f);
+        amount=targetAmount=std::clamp(clean(influence),0.f,1.5f);
         ms=targetMs=targetBypass=bypassMix=0;outputGain=targetOutputGain=1;envelope=fast=slow=eventPeak=0;smoothedControl=0;
         active=onsetHighPreviously=strongPreviously=false;triggerArmed=true;
         fastC=float(std::exp(-1/(rate*.0015)));slowC=float(std::exp(-1/(rate*.035)));
@@ -57,8 +61,8 @@ public:
         const float safeDb=std::clamp(clean(outputDb),-12.f,6.f);targetOutputGain=std::pow(10.f,safeDb/20.f);
     }
     Sample process(std::array<float,2> input,std::array<float,2> key) noexcept {
-        for(auto& v:input)v=clean(v);
-        for(auto& v:key)v=clean(v);
+        for(auto& v:input)v=cleanInput(v);
+        for(auto& v:key)v=cleanInput(v);
         key=filter.process(key);
         const float level=std::clamp(std::max(std::abs(key[0]),std::abs(key[1])),0.f,1.f);
         fast=level+fastC*(fast-level);slow=level+slowC*(slow-level);
