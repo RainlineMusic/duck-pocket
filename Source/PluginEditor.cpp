@@ -15,14 +15,11 @@ void stroke(juce::Graphics& g,const juce::Path& p,juce::Colour c,float width){g.
 juce::String hz(double v){return v>=1000?juce::String(v/1000,1)+" kHz":juce::String(juce::roundToInt(v))+" Hz";}
 juce::String timeLabel(double seconds){const int ms=juce::roundToInt(seconds*1000);return ms<1000?juce::String(ms)+" ms":juce::String(seconds,seconds==std::floor(seconds)?0:2)+" s";}
 constexpr std::array<double,6> windows{{.1,.25,.5,1.,2.,5.}};
-void glowStroke(juce::Graphics& g,const juce::Path& p,juce::Colour c,float width,bool glow){
-    if(glow)stroke(g,p,c.withAlpha(.13f),width*2.8f);
-    stroke(g,p,c,width);
-}
 juce::Path smoothPath(const std::vector<juce::Point<float>>& points){
     juce::Path p;if(points.empty())return p;p.startNewSubPath(points.front());
     for(size_t i=1;i+1<points.size();++i){auto mid=(points[i]+points[i+1])*.5f;p.quadraticTo(points[i],mid);}
-    if(points.size()>1)p.lineTo(points.back());return p;
+    if(points.size()>1){p.lineTo(points.back());}
+    return p;
 }
 }
 juce::Colour PocketLook::pick(juce::uint32 neon,juce::uint32 dark,juce::uint32 white) const {
@@ -77,7 +74,7 @@ void PocketLook::drawLinearSlider(juce::Graphics& g,int x,int y,int w,int h,floa
     auto thumb=[&](float px){g.setColour(juce::Colours::black.withAlpha(.22f));g.fillEllipse(px-6,cy-4,12,12);g.setGradientFill(juce::ColourGradient(t.ink,px-4,cy-5,t.neutral,px+5,cy+5,false));g.fillEllipse(px-5.5f,cy-5.5f,11,11);g.setColour(c);g.drawEllipse(px-5.5f,cy-5.5f,11,11,1);};
     if(style==juce::Slider::TwoValueHorizontal){thumb(minPos);thumb(maxPos);}else thumb(pos);
 }
-ModernDial::ModernDial(PocketLook& l,juce::String t,juce::String sub,juce::String u,juce::uint32 a,bool inf,bool infMin,bool compactDial,juce::String infLabel):look(l),title(t),subtitle(sub),unit(u),infinityLabel(infLabel),accent(a),infinity(inf),infinityAtMin(infMin),compact(compactDial){setSliderStyle(juce::Slider::RotaryVerticalDrag);setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);setName(t);setWantsKeyboardFocus(true);}
+ModernDial::ModernDial(PocketLook& l,juce::String t,juce::String sub,juce::String u,juce::uint32 a,bool inf,bool infMin,bool compactDial,juce::String infLabel):look(l),title(t),subtitle(sub),unit(u),infinity(inf),compact(compactDial){juce::ignoreUnused(a,infMin,infLabel);setSliderStyle(juce::Slider::RotaryVerticalDrag);setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);setName(t);setWantsKeyboardFocus(true);}
 void ModernDial::paint(juce::Graphics& g){
     const auto t=look.tokens();const float size=float(juce::jmin(getWidth(),getHeight()));
     const auto c=getLocalBounds().toFloat().getCentre();const float r=size*(compact?.33f:.355f),ring=r+size*.047f;
@@ -85,8 +82,10 @@ void ModernDial::paint(juce::Graphics& g){
     if(!body.isValid()||body.getWidth()!=pw||body.getHeight()!=ph||bodyTheme!=look.theme||std::abs(bodyScale-scale)>.001f){
         body=juce::Image(juce::Image::ARGB,pw,ph,true);bodyTheme=look.theme;bodyScale=scale;juce::Graphics bg(body);bg.addTransform(juce::AffineTransform::scale(scale));
         auto face=juce::Rectangle<float>(2*r,2*r).withCentre(c);
-        for(int i=4;i>0;--i){bg.setColour(juce::Colours::black.withAlpha(.035f));bg.fillEllipse(face.expanded(float(i)).translated(0,float(i)));}
+        juce::Path shadow;shadow.addEllipse(face);juce::DropShadow(juce::Colours::black.withAlpha(.28f),5,{1,3}).drawForPath(bg,shadow);
         bg.setGradientFill(juce::ColourGradient(t.raised.brighter(.12f),c.x-r,c.y-r,t.glass,c.x+r,c.y+r,false));bg.fillEllipse(face);
+        // Angular satin reflection, baked once with the body, from top-left.
+        for(int sector=0;sector<96;++sector){const float a=float(sector)*juce::MathConstants<float>::twoPi/96.f,b=a+juce::MathConstants<float>::twoPi/96.f;const float light=std::pow(juce::jmax(0.f,std::cos(a+juce::MathConstants<float>::pi*.75f)),8.f);juce::Path wedge;wedge.startNewSubPath(c);wedge.lineTo(c.x+(r-5)*std::cos(a),c.y+(r-5)*std::sin(a));wedge.lineTo(c.x+(r-5)*std::cos(b),c.y+(r-5)*std::sin(b));wedge.closeSubPath();bg.setColour(t.ink.withAlpha(light*.045f));bg.fillPath(wedge);}
         bg.setColour(t.border);bg.drawEllipse(face,1.f);bg.setColour(t.glass);bg.drawEllipse(face.reduced(3),2);
         // Restrained machining: highlights face the same top-left light.
         for(int i=0;i<64;++i){const float a=float(i)*juce::MathConstants<float>::twoPi/64.f;
@@ -96,6 +95,7 @@ void ModernDial::paint(juce::Graphics& g){
             bg.setColour(t.muted.withAlpha(i%5==0?.65f:.28f));bg.drawLine(c.x+rr*std::sin(a),c.y-rr*std::cos(a),c.x+(rr-(i%5==0?4.f:2.f))*std::sin(a),c.y-(rr-(i%5==0?4.f:2.f))*std::cos(a),.65f);}
     }
     g.drawImageTransformed(body,juce::AffineTransform::scale(1.f/bodyScale));
+    if(emphasis>.001f){g.setColour(t.ink.withAlpha(emphasis*.16f));g.drawEllipse(juce::Rectangle<float>(2*r,2*r).withCentre(c).reduced(1),1.f);}
     const float proportion=float(valueToProportionOfLength(getValue())),start=juce::MathConstants<float>::pi*1.25f,end=start+juce::MathConstants<float>::pi*1.5f*proportion;
     const bool autoValue=infinity&&proportion>.9995f;
     auto colour=title=="Duration"?t.neutral:t.out;
@@ -147,16 +147,17 @@ DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioPr
 }
 DuckPocketAudioProcessorEditor::~DuckPocketAudioProcessorEditor(){vblank.reset();
 #if DUCK_ENABLE_OPENGL
-    if(glowRenderer)glowRenderer->stop();glowRenderer.reset();
+    if(glowRenderer){glowRenderer->stop();}
+    glowRenderer.reset();
 #endif
     saveSize();audioProcessor.editorOpen.store(false);if(rangeGesture){lowAttach->endGesture();highAttach->endGesture();}if(processRangeGesture){processLowAttach->endGesture();processHighAttach->endGesture();}setLookAndFeel(nullptr);}
 void DuckPocketAudioProcessorEditor::saveSize(){if(!ready||!preferences)return;audioProcessor.editorWidth.store(getWidth());preferences->setValue("duckPocket.ui.width",getWidth());preferences->saveIfNeeded();resizeStamp=0;}
 void DuckPocketAudioProcessorEditor::invalidateChrome(){chromeValid=false;repaint();}
-void DuckPocketAudioProcessorEditor::setTheme(PocketTheme t,bool persist){look.theme=t;if(persist&&preferences){preferences->setValue("duckPocket.ui.theme",t==PocketTheme::Neon?"neon":(t==PocketTheme::Amber?"amber":(t==PocketTheme::SolidDark?"solidDark":"solidWhite")));preferences->saveIfNeeded();}chromeValid=false;repaint();for(auto* c:getChildren())c->repaint();if(bypassMix>0)juce::MessageManager::callAsync([safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this)]{if(safe)safe->captureBlurSnapshot();});}
+void DuckPocketAudioProcessorEditor::setTheme(PocketTheme t,bool persist){look.theme=t;if(persist&&preferences){preferences->setValue("duckPocket.ui.theme",t==PocketTheme::Neon?"neon":(t==PocketTheme::Amber?"amber":(t==PocketTheme::SolidDark?"solidDark":"solidWhite")));preferences->saveIfNeeded();}chromeValid=false;for(auto& layer:softwarePlots)layer.reset();repaint();for(auto* c:getChildren())c->repaint();if(bypassMix>0)juce::MessageManager::callAsync([safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this)]{if(safe)safe->captureBlurSnapshot();});}
 void DuckPocketAudioProcessorEditor::setHistoryWindow(double seconds){gainWindow=scopeWindow=seconds;preferences->setValue("duckPocket.ui.graphWindow",seconds);preferences->saveIfNeeded();invalidateChrome();}
 // A single snowflake button freezes and resumes both graphs together.
 void DuckPocketAudioProcessorEditor::setFrozen(bool frozen){
-    gainFrozen=scopeFrozen=frozen;frozenGain.clear();frozenSummary.clear();
+    triggerStamp=-1;gainFrozen=scopeFrozen=frozen;frozenGain.clear();frozenSummary.clear();
     if(frozen){
         frozenGain.reserve(size_t(filled));
         for(int i=0;i<filled;++i)frozenGain.push_back(history[size_t((cursor-filled+i+historyCapacity)%historyCapacity)]);
@@ -200,7 +201,7 @@ void DuckPocketAudioProcessorEditor::resized(){
     blurredSnapshot={};chromeValid=false;if(ready){audioProcessor.editorWidth.store(getWidth());resizeStamp=juce::Time::getMillisecondCounterHiRes();}
 }
 void DuckPocketAudioProcessorEditor::panel(juce::Graphics& g,juce::Rectangle<float> r){
-    const auto t=look.tokens();g.setColour(juce::Colours::black.withAlpha(.18f));g.fillRoundedRectangle(r.translated(0,2),10);
+    const auto t=look.tokens();juce::Path shadow;shadow.addRoundedRectangle(r,10);juce::DropShadow(juce::Colours::black.withAlpha(.20f),5,{0,2}).drawForPath(g,shadow);
     g.setGradientFill(juce::ColourGradient(t.raised.brighter(.035f),r.getX(),r.getY(),t.raised.darker(.035f),r.getRight(),r.getBottom(),false));g.fillRoundedRectangle(r,10);
     g.setColour(t.border);g.drawRoundedRectangle(r,10,.8f);g.setColour(look.isDark()?juce::Colours::white.withAlpha(.055f):juce::Colours::white.withAlpha(.45f));g.drawLine(r.getX()+10,r.getY()+.5f,r.getRight()-10,r.getY()+.5f,.8f);
 }
@@ -228,11 +229,7 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
     const double now=(frozen||displayTime<=0.)?at(count-1).time:displayTime;
     const auto label=look.tokens().out;
     auto emit=[&](const juce::Path& path,juce::Colour colour,float width){
-#if DUCK_ENABLE_OPENGL
-        if(emissionGraphics){stroke(*emissionGraphics,path,colour,width);}
-#else
-        juce::ignoreUnused(path,colour,width);
-#endif
+        if(emissionGraphics){emissionGraphics->setGradientFill(juce::ColourGradient(colour.withAlpha(.18f),plot.getX(),0,colour,plot.getRight(),0,false));emissionGraphics->strokePath(path,juce::PathStrokeType(width,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
     };
     juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(plot.toNearestInt());
     // Column count must track *physical* pixels, not the fixed 960-wide design
@@ -289,7 +286,7 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
             juce::Path fill;fill.startNewSubPath(pathPoints.front());for(const auto& point:pathPoints)fill.lineTo(point);fill.lineTo(pathPoints.back().x,plot.getY());fill.lineTo(pathPoints.front().x,plot.getY());fill.closeSubPath();
             g.setGradientFill(juce::ColourGradient(label.withAlpha(.02f),0,plot.getY(),label.withAlpha(.20f),0,plot.getBottom(),false));g.fillPath(fill);
             juce::Path path;if(longWindow){path.startNewSubPath(pathPoints.front());for(size_t i=1;i<pathPoints.size();++i)path.lineTo(pathPoints[i]);}else path=smoothPath(pathPoints);
-            if(glow&&signalPeak>.004f&&!frozen)stroke(g,path,label.withAlpha(.10f),4.2f);
+            if(!emissionGraphics&&glow&&signalPeak>.004f&&!frozen)stroke(g,path,label.withAlpha(.10f),4.2f);
             g.setGradientFill(juce::ColourGradient(label.withAlpha(.20f),plot.getX(),0,label,plot.getRight(),0,false));g.strokePath(path,juce::PathStrokeType(1.65f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));emit(path,label,2.5f);
         }
         return;
@@ -330,7 +327,7 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
             if(longWindow){for(size_t i=pathBottom.size()-1;i>0;--i)body.lineTo(pathBottom[i-1]);}
             else for(size_t i=pathBottom.size()-1;i>1;--i)body.quadraticTo(pathBottom[i-1],(pathBottom[i-1]+pathBottom[i-2])*.5f);
             body.lineTo(pathBottom.front());body.closeSubPath();
-            if(glow&&!longWindow){g.setColour(colour.withAlpha(.12f));g.strokePath(body,juce::PathStrokeType(3.5f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
+            if(!emissionGraphics&&glow&&!longWindow&&!frozen){g.setColour(colour.withAlpha(.12f));g.strokePath(body,juce::PathStrokeType(3.5f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
             // No outline: the wave itself is filled with the colour the outline used to have.
             g.setGradientFill(juce::ColourGradient(colour.withAlpha(.12f),plot.getX(),0,colour.withAlpha(kind?.7f:.78f),plot.getRight(),0,false));g.fillPath(body);emit(body,colour,2.f);
         }
@@ -410,7 +407,15 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
         glowRenderer->publish(std::move(frame));
     }else
 #endif
-    {graph(g,{24,88,640,224},true);graph(g,{24,328,640,224},false);}
+    {for(int i=0;i<2;++i){const float y=i?328.f:88.f;const juce::Rectangle<float> plot(42,y+47,570,137);auto& layer=softwarePlots[size_t(i)];
+        const float device=g.getInternalContext().getPhysicalPixelScaleFactor();layer.prepare(juce::jmax(1,juce::roundToInt(plot.getWidth()*device)),juce::jmax(1,juce::roundToInt(plot.getHeight()*device)));
+        juce::Graphics cg(layer.core);cg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(device));
+        juce::Graphics eg(layer.emission);const float raster=float(layer.emission.getWidth())/plot.getWidth();eg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(raster));emissionGraphics=&eg;graph(cg,{24,y,640,224},i==0);emissionGraphics=nullptr;
+        const float chromeDevice=float(chrome.getWidth())/float(getWidth());auto crop=(scaled(42,y+47,570,137).toFloat()*chromeDevice).toNearestInt().getIntersection(chrome.getBounds());
+        const float intensity=(gainFrozen||scopeFrozen)?0.f:juce::jlimit(0.f,look.hasGlow()?.22f:.07f,signalPeak*.18f+currentReduction*.045f);
+        layer.paint(g,chrome.getClippedImage(crop),plot,intensity,displayTime,i?scopeWindow:gainWindow,i==1);
+    }}
+    if(triggerStamp>=0&&!gainFrozen){const float flash=1.f-float((juce::Time::getMillisecondCounterHiRes()-triggerStamp)/180.);if(flash>0){g.setColour(look.tokens().out.withAlpha(flash*.45f));g.fillRect(610.f,135.f,2.f,137.f);}}
     paintDynamicLabels(g);
 }
 void DuckPocketAudioProcessorEditor::captureBlurSnapshot(){
@@ -458,10 +463,11 @@ void DuckPocketAudioProcessorEditor::frameTick(){
         if(glowRenderer->failed.load()||(!readyGL&&juce::Time::getMillisecondCounterHiRes()-glAttachTime>2000)){setOpenGL(false);}}
 #endif
     if(resizeStamp>0&&juce::Time::getMillisecondCounterHiRes()-resizeStamp>400)saveSize();
+    if(triggerStamp>=0){repaint(gainArea);if(juce::Time::getMillisecondCounterHiRes()-triggerStamp>=180)triggerStamp=-1;}
     syncDurationMode();
     if(!chromeValid&&resizeStamp>0&&juce::Time::getMillisecondCounterHiRes()-resizeStamp>100)repaint();
     const auto epoch=audioProcessor.traceGeneration.load(std::memory_order_relaxed);
-    if(epoch!=traceGeneration){traceGeneration=epoch;cursor=filled=summaryCursor=summaryFilled=0;summaryBin=-1;displayTime=lastClock=lastLatest=gapMax=0;lastPaintedTime=-1;lastVisibleSignalTime=-1;signalPeak=currentReduction=0;repaint(gainArea);repaint(scopeArea);}
+    if(epoch!=traceGeneration){traceGeneration=epoch;cursor=filled=summaryCursor=summaryFilled=0;summaryBin=-1;displayTime=lastClock=lastLatest=gapMax=0;lastPaintedTime=-1;lastVisibleSignalTime=-1;signalPeak=currentReduction=0;for(auto& layer:softwarePlots)layer.reset();triggerStamp=-1;repaint(gainArea);repaint(scopeArea);}
     PocketTrace v;bool fresh=false;
     while(audioProcessor.popTrace(v)){
         if(v.generation!=traceGeneration||!std::isfinite(v.time))continue;
@@ -469,6 +475,7 @@ void DuckPocketAudioProcessorEditor::frameTick(){
         const auto bin=static_cast<long long>(std::floor(v.time*500.));
         if(bin!=summaryBin){summaryBin=bin;summaryHistory[size_t(summaryCursor)]=v;summaryCursor=(summaryCursor+1)%summaryCapacity;summaryFilled=juce::jmin(summaryFilled+1,summaryCapacity);}
         else {auto& s=summaryHistory[size_t((summaryCursor+summaryCapacity-1)%summaryCapacity)];s.keyLo=juce::jmin(s.keyLo,v.keyLo);s.keyHi=juce::jmax(s.keyHi,v.keyHi);s.outLo=juce::jmin(s.outLo,v.outLo);s.outHi=juce::jmax(s.outHi,v.outHi);s.gain=juce::jmin(s.gain,v.gain);s.time=v.time;}
+        if(1.f-v.gain-currentReduction>.035f){const auto stamp=juce::Time::getMillisecondCounterHiRes();if(triggerStamp<0||stamp-triggerStamp>180)triggerStamp=stamp;}
         signalPeak=juce::jmax(std::abs(v.keyLo),std::abs(v.keyHi),std::abs(v.outLo),std::abs(v.outHi));currentReduction=1.f-v.gain;
         if(signalPeak>.004f||currentReduction>.001f)lastVisibleSignalTime=v.time;
         fresh=true;

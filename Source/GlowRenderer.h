@@ -32,7 +32,8 @@ public:
     }
     void openGLContextClosing() override {
         ready.store(false);presented.store(false);lastFrame.reset();for(auto& p:resources){p.base.release();p.mask.release();p.horizontal.release();p.vertical.release();p.chromeRevision=std::numeric_limits<std::uint64_t>::max();}
-        if(vertexBuffer)context.extensions.glDeleteBuffers(1,&vertexBuffer);if(vertexArray)context.extensions.glDeleteVertexArrays(1,&vertexArray);
+        if(vertexBuffer){context.extensions.glDeleteBuffers(1,&vertexBuffer);}
+        if(vertexArray){context.extensions.glDeleteVertexArrays(1,&vertexArray);}
         vertexBuffer=vertexArray=0;copyProgram.reset();blurProgram.reset();
     }
     void renderOpenGL() override {
@@ -76,7 +77,7 @@ private:
     void draw(juce::OpenGLShaderProgram& program,GLuint texture,float dx,float dy,float opacity){
         using namespace juce::gl;program.use();program.setUniform("source",0);program.setUniform("stepSize",dx,dy);program.setUniform("opacity",opacity);
         context.extensions.glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
-        const auto attribute=juce::OpenGLShaderProgram::Attribute(program,"position").attributeID;if(attribute<0)return;
+        const GLint attribute=static_cast<GLint>(juce::OpenGLShaderProgram::Attribute(program,"position").attributeID);if(attribute<0)return;
         context.extensions.glBindBuffer(GL_ARRAY_BUFFER,vertexBuffer);context.extensions.glEnableVertexAttribArray(GLuint(attribute));context.extensions.glVertexAttribPointer(GLuint(attribute),2,GL_FLOAT,GL_FALSE,0,nullptr);glDrawArrays(GL_TRIANGLES,0,6);context.extensions.glDisableVertexAttribArray(GLuint(attribute));
     }
 };

@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "UIStyle.h"
 #include "GlowRenderer.h"
+#include "SoftwareGlow.h"
 
 
 class PocketLook final:public juce::LookAndFeel_V4 {
@@ -56,22 +57,28 @@ private:
     }
 };
 
-class ModernDial final:public juce::Slider {
+class ModernDial final:public juce::Slider,private juce::Timer {
 public:
     // trailing infLabel overrides the "infinity" display text at full deflection
     // (e.g. "AUTO"); empty means keep the default infinity glyph.
     ModernDial(PocketLook&,juce::String,juce::String,juce::String,juce::uint32,bool=false,bool=false,bool=false,juce::String={});
+    ~ModernDial() override {stopTimer();}
+    void mouseEnter(const juce::MouseEvent& e) override {juce::Slider::mouseEnter(e);animate(.65f);}
+    void mouseExit(const juce::MouseEvent& e) override {juce::Slider::mouseExit(e);animate(0);}
+    void mouseDown(const juce::MouseEvent& e) override {juce::Slider::mouseDown(e);animate(1);}
+    void mouseUp(const juce::MouseEvent& e) override {juce::Slider::mouseUp(e);animate(isMouseOver()?.65f:0);}
     void paint(juce::Graphics&) override;
     void setMeter(float reduction,float signal){if(std::abs(gr-reduction)>.001f||std::abs(activity-signal)>.005f){gr=reduction;activity=signal;repaint();}}
     void setDurationMode(bool relative){unit=relative?"%":"ms";subtitle=relative?"Key length":"Legacy length";repaint();}
 private:
     PocketLook& look;
-    juce::String title,subtitle,unit,infinityLabel;
-    juce::uint32 accent;
-    bool infinity,infinityAtMin,compact;
+    juce::String title,subtitle,unit;
+    bool infinity,compact;
     juce::Image body;
     PocketTheme bodyTheme=PocketTheme::Neon;
-    float bodyScale=0,gr=0,activity=0;
+    float bodyScale=0,gr=0,activity=0,emphasis=0,targetEmphasis=0;
+    void animate(float target){targetEmphasis=target;startTimerHz(60);}
+    void timerCallback() override {emphasis+=(targetEmphasis-emphasis)*.3f;if(std::abs(targetEmphasis-emphasis)<.01f){emphasis=targetEmphasis;stopTimer();}repaint();}
 };
 
 class DuckPocketAudioProcessorEditor final:public juce::AudioProcessorEditor {
@@ -89,9 +96,11 @@ private:
     std::unique_ptr<PocketGlowRenderer> glowRenderer;
     double glAttachTime=0;
     bool glWasReady=false;
-    juce::Graphics* emissionGraphics=nullptr;
     void setOpenGL(bool enabled,bool persist=true);
 #endif
+    juce::Graphics* emissionGraphics=nullptr;
+    std::array<PocketSoftwareGlow,2> softwarePlots;
+    double triggerStamp=-1;
     using SliderAttachment=juce::AudioProcessorValueTreeState::SliderAttachment;
     DuckPocketAudioProcessor& audioProcessor;
     PocketLook look;
