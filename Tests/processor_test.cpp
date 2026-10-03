@@ -1,0 +1,25 @@
+#include "PluginProcessor.h"
+#include <iostream>
+#include <cstdlib>
+#include <thread>
+static void check(bool b,const char* m){if(!b){std::cerr<<"FAIL "<<m<<'\n';std::abort();}}
+static void set(DuckPocketAudioProcessor& p,const char* id,float value){auto* a=p.parameters.getParameter(id);a->setValueNotifyingHost(a->convertTo0to1(value));}
+int main(){juce::ScopedJuceInitialiser_GUI init;
+ DuckPocketAudioProcessor p;juce::MidiBuffer midi;
+ for(double invalid:{0.,std::numeric_limits<double>::quiet_NaN(),std::numeric_limits<double>::infinity()}){p.setRateAndBufferSizeDetails(invalid,64);p.prepareToPlay(invalid,64);check(p.getLatencySamples()==pocket::Engine::latencyForRate(invalid),"invalid host rate safe");}
+
+ for(double sr:{44100.,48000.,88200.,96000.,176400.,192000.})for(int channels:{1,2})for(int keyChannels:{0,1,2}){
+  auto layout=p.getBusesLayout();layout.inputBuses.set(0,channels==1?juce::AudioChannelSet::mono():juce::AudioChannelSet::stereo());layout.outputBuses.set(0,layout.inputBuses[0]);layout.inputBuses.set(1,keyChannels==0?juce::AudioChannelSet::disabled():(keyChannels==1?juce::AudioChannelSet::mono():juce::AudioChannelSet::stereo()));
+  check(p.setBusesLayout(layout),"supported buses");p.setRateAndBufferSizeDetails(sr,128);p.prepareToPlay(sr,128);check(p.getLatencySamples()==int(std::ceil(sr*.005)),"reported latency");
+  for(int size:{0,1,17,128,3,4096,65536}){juce::AudioBuffer<float> b(channels+keyChannels,size);b.clear();p.processBlock(b,midi);for(int c=0;c<channels;++c)for(int n=0;n<size;++n)check(std::isfinite(b.getSample(c,n)),"variable block finite");}
+  set(p,"relativeDuration",0);set(p,"amount",0);p.reset();const int latency=p.getLatencySamples();int position=0;
+  for(int size:{17,3,128,1,4096}){juce::AudioBuffer<float> b(channels+keyChannels,size);b.clear();for(int c=0;c<channels;++c)for(int n=0;n<size;++n)b.setSample(c,n,position+n==0?.5f:0.f);p.processBlock(b,midi);for(int c=0;c<channels;++c)for(int n=0;n<size;++n)check(b.getSample(c,n)==(position+n==latency?.5f:0.f),"latency-aligned dry across blocks");position+=size;}
+ }
+ auto old=juce::ValueTree("PARAMETERS");for(auto id:{"amount","duration"}){auto n=juce::ValueTree("PARAM");n.setProperty("id",id,nullptr);n.setProperty("value",juce::String(id)=="duration"?123.f:70.f,nullptr);old.appendChild(n,nullptr);}old.setProperty("uiExpanded",true,nullptr);old.setProperty("uiWidth",1120,nullptr);
+ juce::MemoryBlock state;juce::AudioProcessor::copyXmlToBinary(*old.createXml(),state);p.setStateInformation(state.getData(),int(state.getSize()));check(p.parameters.getRawParameterValue("relativeDuration")->load()==0,"old sessions use legacy duration");check(p.parameters.getRawParameterValue("duration")->load()==123,"old duration preserved");check(p.editorWidth.load()==1120,"old width preserved");
+ p.getStateInformation(state);DuckPocketAudioProcessor restored;restored.setStateInformation(state.getData(),int(state.getSize()));check(restored.parameters.getRawParameterValue("duration")->load()==123,"state roundtrip");check(restored.parameters.getRawParameterValue("relativeDuration")->load()==0,"legacy mode roundtrip");check(DuckPocketAudioProcessor().parameters.getRawParameterValue("durationPercent")->load()==100,"new default 100 percent");
+ const char bad[]="broken XML";p.setStateInformation(bad,sizeof bad);p.setStateInformation(nullptr,0);check(p.parameters.getRawParameterValue("duration")->load()==123,"corrupt state is ignored");
+ p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);p.editorOpen.store(true);juce::AudioBuffer<float> b(p.getTotalNumInputChannels(),4096);b.clear();p.processBlock(b,midi);PocketTrace v;check(p.popTrace(v),"trace produced");const auto epoch=v.generation;p.reset();p.processBlock(b,midi);bool found=false;while(p.popTrace(v))if(v.generation!=epoch){found=true;check(v.time<.1,"trace time restarts");}check(found,"trace epoch changes after reset");
+ for(int i=0;i<100;++i){std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());editor->setSize(800+i%2*700,633+i%2*555);}
+ std::cout<<"PASS processor buses, variable blocks, latency, state migration, trace resets, 100 editor lifecycles\n";
+}
