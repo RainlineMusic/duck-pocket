@@ -90,7 +90,7 @@ void ModernDial::paint(juce::Graphics& g){
         bg.setColour(t.border);bg.drawEllipse(face,1.f);bg.setColour(t.glass);bg.drawEllipse(face.reduced(3),2);
         // Restrained machining: highlights face the same top-left light.
         for(int i=0;i<64;++i){const float a=float(i)*juce::MathConstants<float>::twoPi/64.f;
-            const float light=.15f+.45f*juce::jmax(0.f,-std::sin(a)-std::cos(a));
+            const float light=.15f+.45f*juce::jmax(0.f,-std::sin(a)+std::cos(a));
             bg.setColour(t.muted.withAlpha(light));bg.drawLine(c.x+(r-2)*std::sin(a),c.y-(r-2)*std::cos(a),c.x+(r-4)*std::sin(a),c.y-(r-4)*std::cos(a),.6f);}
         for(int i=0;i<=30;++i){const float a=juce::MathConstants<float>::pi*(1.25f+1.5f*float(i)/30.f),rr=ring+size*.06f;
             bg.setColour(t.muted.withAlpha(i%5==0?.65f:.28f));bg.drawLine(c.x+rr*std::sin(a),c.y-rr*std::cos(a),c.x+(rr-(i%5==0?4.f:2.f))*std::sin(a),c.y-(rr-(i%5==0?4.f:2.f))*std::cos(a),.65f);}
@@ -399,7 +399,7 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
 
 #if DUCK_ENABLE_OPENGL
     if(glowRenderer&&glowRenderer->ready.load()&&!capturingBlur&&bypassMix<.5f){
-        auto frame=std::make_shared<PocketGlowRenderer::Frame>();frame->width=getWidth();frame->height=getHeight();
+        auto frame=std::make_shared<PocketGlowRenderer::Frame>();frame->width=getWidth();frame->height=getHeight();frame->chromeRevision=chromeBuildCount;
         for(int i=0;i<2;++i){const float y=i?328.f:88.f;const juce::Rectangle<float> plot(42,y+47,570,137);auto& layer=frame->plots[size_t(i)];layer.bounds=scaled(42,y+47,570,137);
             const float device=float(chrome.getWidth())/float(getWidth());auto crop=(layer.bounds.toFloat()*device).toNearestInt().getIntersection(chrome.getBounds());layer.background=chrome.getClippedImage(crop);
             const float raster=g.getInternalContext().getPhysicalPixelScaleFactor()*.5f;

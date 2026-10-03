@@ -8,7 +8,7 @@
 class PocketGlowRenderer final : public juce::OpenGLRenderer {
 public:
     struct Plot {juce::Rectangle<int> bounds;juce::Image background,emission;float intensity=0;};
-    struct Frame {std::array<Plot,2> plots;int width=1,height=1;};
+    struct Frame {std::array<Plot,2> plots;int width=1,height=1;std::uint64_t chromeRevision=0;};
     juce::OpenGLContext context;
     std::atomic<bool> ready{false},failed{false},presented{false};
     std::atomic<std::uint64_t> frames{0};
@@ -31,7 +31,7 @@ public:
         ready.store(true);
     }
     void openGLContextClosing() override {
-        ready.store(false);presented.store(false);lastFrame.reset();for(auto& p:resources){p.base.release();p.mask.release();p.horizontal.release();p.vertical.release();}
+        ready.store(false);presented.store(false);lastFrame.reset();for(auto& p:resources){p.base.release();p.mask.release();p.horizontal.release();p.vertical.release();p.chromeRevision=std::numeric_limits<std::uint64_t>::max();}
         if(vertexBuffer)context.extensions.glDeleteBuffers(1,&vertexBuffer);if(vertexArray)context.extensions.glDeleteVertexArrays(1,&vertexArray);
         vertexBuffer=vertexArray=0;copyProgram.reset();blurProgram.reset();
     }
@@ -45,13 +45,14 @@ public:
         glViewport(0,0,vw,vh);juce::OpenGLHelpers::clear(juce::Colours::transparentBlack);glDisable(GL_DEPTH_TEST);glDisable(GL_BLEND);
         context.extensions.glBindVertexArray(vertexArray);
         for(size_t i=0;i<resources.size();++i){auto& r=resources[i];const auto& plot=frame->plots[i];if(!plot.background.isValid())continue;
-            if(frame!=lastFrame){r.base.loadImage(plot.background);if(plot.emission.isValid())r.mask.loadImage(plot.emission);}
+            if(r.chromeRevision!=frame->chromeRevision){r.base.loadImage(plot.background);r.chromeRevision=frame->chromeRevision;}
+            if(frame!=lastFrame&&plot.emission.isValid())r.mask.loadImage(plot.emission);
             if(plot.intensity>.001f&&plot.emission.isValid()){
                 const int w=plot.emission.getWidth(),h=plot.emission.getHeight();
                 if(r.horizontal.getWidth()!=w||r.horizontal.getHeight()!=h){
                     if(!r.horizontal.initialise(context,w,h)||!r.vertical.initialise(context,w,h)){failed.store(true);ready.store(false);return;}}
-                r.horizontal.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.mask.getTextureID(),3.f/float(w),0,1);
-                r.vertical.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.horizontal.getTextureID(),0,3.f/float(h),1);
+                r.horizontal.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.mask.getTextureID(),(1.f+plot.intensity*6.f)/float(w),0,1);
+                r.vertical.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.horizontal.getTextureID(),0,(1.f+plot.intensity*6.f)/float(h),1);
             }
             context.extensions.glBindFramebuffer(GL_FRAMEBUFFER,defaultTarget);
             const auto bounds=plot.bounds.toFloat()*scale;glViewport(juce::roundToInt(bounds.getX()),vh-juce::roundToInt(bounds.getBottom()),juce::roundToInt(bounds.getWidth()),juce::roundToInt(bounds.getHeight()));
@@ -62,7 +63,7 @@ public:
         context.extensions.glBindBuffer(GL_ARRAY_BUFFER,0);context.extensions.glBindVertexArray(0);
     }
 private:
-    struct Resources {juce::OpenGLTexture base,mask;juce::OpenGLFrameBuffer horizontal,vertical;};
+    struct Resources {std::uint64_t chromeRevision=std::numeric_limits<std::uint64_t>::max();juce::OpenGLTexture base,mask;juce::OpenGLFrameBuffer horizontal,vertical;};
     std::array<Resources,2> resources;
     std::unique_ptr<juce::OpenGLShaderProgram> copyProgram,blurProgram;
     GLuint vertexBuffer=0,vertexArray=0;

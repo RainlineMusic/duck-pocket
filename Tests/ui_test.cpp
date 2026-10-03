@@ -28,12 +28,12 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI init;const juce::
   for(int scale:{1,2}){auto start=juce::Time::getMillisecondCounterHiRes();auto image=e->createComponentSnapshot(e->getLocalBounds(),true,float(scale));auto stream=output.getChildFile(juce::String(names[ti])+"-"+juce::String(state)+"-"+juce::String(scale)+"x.png").createOutputStream();check(juce::PNGImageFormat().writeImageToStream(image,*stream),"PNG encoding");stream->flush();
    std::cout<<names[ti]<<" state="<<state<<" DPI="<<scale<<" capture_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';}
  }
- e->createComponentSnapshot(e->getLocalBounds());auto cached=DuckUiTestAccess::caches(*e);for(int i=0;i<20;++i){e->createComponentSnapshot(e->getLocalBounds());}check(DuckUiTestAccess::caches(*e)==cached,"chrome reused when unchanged");
+ e->createComponentSnapshot(e->getLocalBounds());auto cached=DuckUiTestAccess::caches(*e);auto warm=juce::Time::getMillisecondCounterHiRes();for(int i=0;i<20;++i){e->createComponentSnapshot(e->getLocalBounds());}std::cout<<"warm_snapshot_ms="<<(juce::Time::getMillisecondCounterHiRes()-warm)/20.<<'\n';check(DuckUiTestAccess::caches(*e)==cached,"chrome reused when unchanged");
 #if DUCK_ENABLE_OPENGL
  if(native){DuckUiTestAccess::gl(*e,true);pump(400);DuckUiTestAccess::tick(*e);pump(100);std::cout<<"GL created="<<DuckUiTestAccess::ready(*e)<<'\n';
  check(DuckUiTestAccess::ready(*e),"GL context/shaders on local Mesa");
  for(int i=0;i<5;++i){DuckUiTestAccess::gl(*e,false);DuckUiTestAccess::gl(*e,true);pump(100);}
  DuckUiTestAccess::gl(*e,false);}
 #endif
- if(native)e->removeFromDesktop();e.reset();std::cout<<"PASS real JUCE theme captures, chrome reuse and GL lifecycle\n";
+ if(native)e->removeFromDesktop();e.reset();std::cout<<"PASS real JUCE theme captures and chrome reuse\n";
 }

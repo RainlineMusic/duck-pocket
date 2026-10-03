@@ -134,7 +134,7 @@ private:
     float chromeScale=1.f;
     juce::Rectangle<int> blurArea,gainArea,scopeArea;
 
-    // Reused every frame: no heap churn in the 60 fps paint path.
+    // Bounded, reused bucket and point storage for the graph construction.
     std::vector<float> bucketLo,bucketHi,bucketScratch;
     std::vector<juce::Point<float>> pathPoints,pathTop,pathBottom;
 
