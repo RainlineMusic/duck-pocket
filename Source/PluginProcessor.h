@@ -12,7 +12,7 @@ public:
     DuckPocketAudioProcessor();
     bool popTrace(PocketTrace&);
 
-    std::atomic<bool> displayBypass{false}, editorOpen{false}, editorExpanded{false};
+    std::atomic<bool> displayBypass{false}, editorOpen{false};
     std::atomic<int> editorWidth{0};
 
     void prepareToPlay(double, int) override;
@@ -42,7 +42,7 @@ public:
 
 private:
     pocket::Engine engine;
-    std::atomic<float>* amount=nullptr,*duration=nullptr,*low=nullptr,*high=nullptr,*bypass=nullptr,*balance=nullptr,*processLow=nullptr,*processHigh=nullptr,*outputGain=nullptr;
+    std::atomic<float>* amount=nullptr,*duration=nullptr,*low=nullptr,*high=nullptr,*bypass=nullptr,*balance=nullptr,*processLow=nullptr,*processHigh=nullptr,*outputGain=nullptr,*durationPercent=nullptr,*relativeDuration=nullptr;
     void processAudio(juce::AudioBuffer<float>&,juce::MidiBuffer&,bool);
 
     // 2400 trace packets/s gives 240 samples in the shortest (100 ms) graph.

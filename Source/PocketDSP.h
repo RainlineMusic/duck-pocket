@@ -21,6 +21,9 @@ class Engine {
     float amount=1,targetAmount=1,ms=0,targetMs=0,targetBypass=0,bypassMix=0,outputGain=1,targetOutputGain=1;
     float duration=2000,targetDuration=2000,envelope=0,fast=0,slow=0,eventPeak=0,smoothedControl=0;
     float fastC=0,slowC=0,releaseC=0,endC=0,slew=0,attackC=0,bypassC=0;
+    float targetPercent=100,percent=100,measuredLengthMs=0,eventLengthMs=0;
+    std::uint64_t lastAudibleAge=0;
+    bool relativeDuration=false;
     bool active=false,onsetHighPreviously=false,triggerArmed=true,durationInit=false,strongPreviously=false;
     static float clean(float v) noexcept { return std::isfinite(v)?v:0.f; }
     // Reject corrupt buffers far outside any representable audio level before
@@ -53,8 +56,10 @@ public:
         attackC=float(std::exp(-1/(rate*.0016)));
         bypassC=float(std::exp(-1/(rate*.0025)));
         slew=float(std::exp(-1/(rate*.005)));duration=targetDuration=2000;durationInit=false;
+        targetPercent=percent=100;measuredLengthMs=eventLengthMs=0;lastAudibleAge=0;relativeDuration=false;
     }
-    void configure(float influence,float durationMs,float low=20,float high=20000,bool bypassed=false,float balance=0,float processLow=20,float processHigh=20000,float outputDb=0) noexcept {
+    void configure(float influence,float durationMs,float low=20,float high=20000,bool bypassed=false,float balance=0,float processLow=20,float processHigh=20000,float outputDb=0,float durationPercent=100,bool useRelativeDuration=false) noexcept {
+        relativeDuration=useRelativeDuration;targetPercent=std::clamp(clean(durationPercent),1.f,100.f);
         targetAmount=std::clamp(clean(influence),0.f,1.5f);targetDuration=std::clamp(clean(durationMs),5.f,2000.f);if(!durationInit){duration=targetDuration;durationInit=true;}
         filter.set(clean(low),clean(high));processingFilter.set(clean(processLow),clean(processHigh));
         targetMs=std::clamp(clean(balance),-1.f,1.f);targetBypass=bypassed?1.f:0.f;
@@ -73,7 +78,11 @@ public:
         if(active){
             eventPeak=std::max(eventPeak,level);
             quiet=fast<std::max(1e-7f,eventPeak*.001f)?quiet+1:0;
-            if(quiet>int(rate*.002)){active=false;rearmQuiet=0;}
+            if(level>=std::max(1e-7f,eventPeak*.001f))lastAudibleAge=age+1;
+            if(quiet>int(rate*.002)){
+                if(lastAudibleAge>0)measuredLengthMs=float(double(lastAudibleAge)*1000./rate);
+                active=false;rearmQuiet=0;
+            }
         }
         // A short key tail used to start a second event as soon as `active`
         // dropped, producing two 1-20 ms notches. Require a real low-level gap
@@ -93,12 +102,27 @@ public:
         const bool strongHigh=level>1e-7f&&fast>std::max(1e-7f,slow*(strongPreviously?1.2f:2.5f));
         const bool hitStart=!triggerArmed&&strongHigh&&!strongPreviously&&refractory==0;
         strongPreviously=strongHigh;
-        if(armedStart||hitStart){active=true;triggerArmed=false;age=0;quiet=0;rearmQuiet=0;eventPeak=level;refractory=std::max(1,int(rate*.012));}
+        if(armedStart||hitStart){
+            // A fresh onset caps an overlapping preceding event. Learning is
+            // independent of the Duration gate, so 50% cannot train itself shorter.
+            if(active&&lastAudibleAge>0)measuredLengthMs=float(double(lastAudibleAge)*1000./rate);
+            eventLengthMs=measuredLengthMs;lastAudibleAge=1;
+            active=true;triggerArmed=false;age=0;quiet=0;rearmQuiet=0;eventPeak=level;refractory=std::max(1,int(rate*.012));}
         // Duration is read live (lightly slewed), so turning the knob takes effect on
         // the sound that is already playing instead of waiting for the next event.
         duration=targetDuration+slew*(duration-targetDuration);if(std::abs(duration-targetDuration)<.01f)duration=targetDuration;
         envelope=std::max(level,envelope*(active?releaseC:endC));if(envelope<1e-7f)envelope=0;
-        const float gate=duration>=1999.5f?1.f:(active?durationGain(double(age)*1000/rate,duration):0.f);
+        percent=targetPercent+slew*(percent-targetPercent);
+        if(std::abs(percent-targetPercent)<.001f)percent=targetPercent;
+        float gate=duration>=1999.5f?1.f:(active?durationGain(double(age)*1000/rate,duration):0.f);
+        if(relativeDuration){
+            if(percent>=99.999f||eventLengthMs<=0)gate=1.f;
+            else {
+                const double length=std::max(5.,double(eventLengthMs)*percent*.01);
+                const double t=std::clamp((double(age)*1000./rate-length*.5)/(length*.5),0.,1.);
+                gate=active?float(.5+.5*std::cos(3.141592653589793*t)):0.f;
+            }
+        }
         const float control=envelope*gate;if(active)++age;
         while(head!=tail&&clock>std::uint64_t(lookahead)&&peaks[head].index<clock-std::uint64_t(lookahead))head=(head+1)%peaks.size();
         while(head!=tail){size_t last=(tail+peaks.size()-1)%peaks.size();if(peaks[last].value>control)break;tail=last;}
