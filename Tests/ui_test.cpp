@@ -35,5 +35,6 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI init;const juce::
  for(int i=0;i<5;++i){DuckUiTestAccess::gl(*e,false);DuckUiTestAccess::gl(*e,true);pump(100);}
  DuckUiTestAccess::gl(*e,false);}
 #endif
- if(native)e->removeFromDesktop();e.reset();std::cout<<"PASS real JUCE theme captures and chrome reuse\n";
+ if(native){e->removeFromDesktop();}
+ e.reset();std::cout<<"PASS real JUCE theme captures and chrome reuse\n";
 }

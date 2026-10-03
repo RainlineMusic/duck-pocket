@@ -8,6 +8,8 @@ int main(){
   old.configure(1,2000);relative.configure(1,2000,20,20000,false,0,20,20000,0,100,true);
   for(int n=0;n<int(sr*2);++n){float k=n%int(sr*.5)<int(sr*.1)?.8f:0;
    auto a=old.process({.3f,-.2f},{k,k}),b=relative.process({.3f,-.2f},{k,k});check(a.out==b.out&&a.key==b.key&&a.gain==b.gain,"100% must equal previous AUTO bit for bit");}
+  pocket::Engine automated;automated.reset(sr);
+  for(int n=0;n<int(sr);++n){const float pct=n%400<200?1.f:99.f;automated.configure(1,2000,20,20000,false,0,20,20000,0,pct,true);const float key=n%int(sr*.25)<int(sr*.1)?.8f:0;const auto v=automated.process({.3f,-.2f},{key,key});check(std::isfinite(v.gain)&&v.gain>=0&&v.gain<=1,"automated relative envelope stays finite and bounded");}
   for(float pct:{25.f,50.f,75.f}){
    pocket::Engine e;e.reset(sr);e.configure(1,2000,20,20000,false,0,20,20000,0,pct,true);
    for(int n=0;n<int(sr*.5);++n)e.process({1,1},{n<int(sr*.1)?.8f:0,n<int(sr*.1)?.8f:0});

@@ -8,6 +8,7 @@ int main(){juce::ScopedJuceInitialiser_GUI init;
  DuckPocketAudioProcessor p;juce::MidiBuffer midi;
  for(double invalid:{0.,std::numeric_limits<double>::quiet_NaN(),std::numeric_limits<double>::infinity()}){p.setRateAndBufferSizeDetails(invalid,64);p.prepareToPlay(invalid,64);check(p.getLatencySamples()==pocket::Engine::latencyForRate(invalid),"invalid host rate safe");}
 
+ auto unsupported=p.getBusesLayout();unsupported.inputBuses.set(0,juce::AudioChannelSet::quadraphonic());unsupported.outputBuses.set(0,juce::AudioChannelSet::quadraphonic());check(!p.isBusesLayoutSupported(unsupported),"multichannel main bus rejected");
  for(double sr:{44100.,48000.,88200.,96000.,176400.,192000.})for(int channels:{1,2})for(int keyChannels:{0,1,2}){
   auto layout=p.getBusesLayout();layout.inputBuses.set(0,channels==1?juce::AudioChannelSet::mono():juce::AudioChannelSet::stereo());layout.outputBuses.set(0,layout.inputBuses[0]);layout.inputBuses.set(1,keyChannels==0?juce::AudioChannelSet::disabled():(keyChannels==1?juce::AudioChannelSet::mono():juce::AudioChannelSet::stereo()));
   check(p.setBusesLayout(layout),"supported buses");p.setRateAndBufferSizeDetails(sr,128);p.prepareToPlay(sr,128);check(p.getLatencySamples()==int(std::ceil(sr*.005)),"reported latency");
@@ -20,6 +21,9 @@ int main(){juce::ScopedJuceInitialiser_GUI init;
  p.getStateInformation(state);DuckPocketAudioProcessor restored;restored.setStateInformation(state.getData(),int(state.getSize()));check(restored.parameters.getRawParameterValue("duration")->load()==123,"state roundtrip");check(restored.parameters.getRawParameterValue("relativeDuration")->load()==0,"legacy mode roundtrip");check(DuckPocketAudioProcessor().parameters.getRawParameterValue("durationPercent")->load()==100,"new default 100 percent");
  const char bad[]="broken XML";p.setStateInformation(bad,sizeof bad);p.setStateInformation(nullptr,0);check(p.parameters.getRawParameterValue("duration")->load()==123,"corrupt state is ignored");
  p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);p.editorOpen.store(true);juce::AudioBuffer<float> b(p.getTotalNumInputChannels(),4096);b.clear();p.processBlock(b,midi);PocketTrace v;check(p.popTrace(v),"trace produced");const auto epoch=v.generation;p.reset();p.processBlock(b,midi);bool found=false;while(p.popTrace(v))if(v.generation!=epoch){found=true;check(v.time<.1,"trace time restarts");}check(found,"trace epoch changes after reset");
+ std::atomic<bool> done{false};std::thread producer([&]{juce::AudioBuffer<float> samples(p.getTotalNumInputChannels(),64);samples.clear();for(int i=0;i<3000;++i){if(i==1500)p.reset();p.processBlock(samples,midi);}done.store(true,std::memory_order_release);});
+ std::uint32_t previousGeneration=0;double previousTime=-1;int packets=0;
+ do{while(p.popTrace(v)){check(std::isfinite(v.time)&&std::isfinite(v.gain)&&std::isfinite(v.outHi)&&std::isfinite(v.keyLo),"untorn concurrent trace");if(v.generation==previousGeneration)check(v.time>=previousTime,"ordered concurrent trace");else previousTime=-1;previousGeneration=v.generation;previousTime=v.time;++packets;}std::this_thread::yield();}while(!done.load(std::memory_order_acquire));producer.join();check(packets>100,"concurrent trace exercised");
  for(int i=0;i<100;++i){std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());editor->setSize(800+i%2*700,633+i%2*555);}
- std::cout<<"PASS processor buses, variable blocks, latency, state migration, trace resets, 100 editor lifecycles\n";
+ std::cout<<"PASS processor buses, variable blocks, latency, state migration, trace resets, concurrent trace exchange, 100 editor lifecycles\n";
 }
