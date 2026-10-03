@@ -3,7 +3,7 @@ name: Build Duck Pocket macOS and Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, Release-1.0, feature/v0.10-duck-pocket]
+    branches: [main, Release-1.0, feature/v1.0.0-duck-pocket]
   pull_request:
     branches: [main, Release-1.0]
 
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PLUGIN_VERSION: "0.10"
+  PLUGIN_VERSION: "1.0.0"
 
 jobs:
   macos:
@@ -43,10 +43,21 @@ jobs:
           ./v10_test
 
       - name: Configure universal build
-        run: cmake -S . -B build -G Xcode -DJUCE_DIR="$PWD/JUCE" -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+        run: cmake -S . -B build -G Xcode -DJUCE_DIR="$PWD/JUCE" -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DDUCK_ENABLE_OPENGL=ON -DDUCK_BUILD_UI_TESTS=ON
 
       - name: Build VST3 and AAX
-        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX
+        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null PocketProcessorTest PocketUITest
+
+      - name: Run all regression tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Capture four themes at 1x and 2x
+        run: build/PocketUITest_artefacts/Release/PocketUITest "$PWD/ui-captures"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-captures-macos
+          path: ui-captures
 
       - name: Import Apple Developer ID certificate
         id: apple-signing
@@ -114,13 +125,13 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DuckPocket-v0.10-macOS-Universal-VST3
-          path: DuckPocket-v0.10-macOS-Universal-VST3.zip
+          name: DuckPocket-v1.0.0-macOS-Universal-VST3
+          path: DuckPocket-v1.0.0-macOS-Universal-VST3.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: DuckPocket-v0.10-macOS-Universal-AAX-Developer
-          path: DuckPocket-v0.10-macOS-Universal-AAX-Developer.zip
+          name: DuckPocket-v1.0.0-macOS-Universal-AAX-Developer
+          path: DuckPocket-v1.0.0-macOS-Universal-AAX-Developer.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
@@ -143,16 +154,24 @@ jobs:
           Move-Item juce-unpack/JUCE-8.0.4 JUCE
 
       - name: Configure x64 build
-        run: cmake -S . -B build -A x64 -DJUCE_DIR="${{ github.workspace }}/JUCE"
+        run: cmake -S . -B build -A x64 -DJUCE_DIR="${{ github.workspace }}/JUCE" -DDUCK_ENABLE_OPENGL=ON -DDUCK_BUILD_UI_TESTS=ON
 
       - name: Build VST3, AAX and DSP tests
-        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX PocketV10Test
+        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null PocketProcessorTest PocketUITest
 
-      - name: Run DSP tests
+      - name: Run all regression tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Capture four themes at 1x and 2x
         shell: pwsh
         run: |
-          & "./build/Release/PocketV10Test.exe"
+          & "./build/PocketUITest_artefacts/Release/PocketUITest.exe" "$PWD/ui-captures"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-captures-windows
+          path: ui-captures
 
       - name: Validate Windows VST3
         shell: pwsh
@@ -172,13 +191,13 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DuckPocket-v0.10-Windows-x64-VST3
-          path: DuckPocket-v0.10-Windows-x64-VST3.zip
+          name: DuckPocket-v1.0.0-Windows-x64-VST3
+          path: DuckPocket-v1.0.0-Windows-x64-VST3.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: DuckPocket-v0.10-Windows-x64-AAX-Developer
-          path: DuckPocket-v0.10-Windows-x64-AAX-Developer.zip
+          name: DuckPocket-v1.0.0-Windows-x64-AAX-Developer
+          path: DuckPocket-v1.0.0-Windows-x64-AAX-Developer.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
