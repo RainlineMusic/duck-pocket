@@ -5,6 +5,7 @@
 struct PocketTrace {
     float keyLo=0, keyHi=0, outLo=0, outHi=0, gain=1;
     double time=0;
+    std::uint32_t generation=0;
 };
 
 class DuckPocketAudioProcessor final : public juce::AudioProcessor {
@@ -14,6 +15,7 @@ public:
 
     std::atomic<bool> displayBypass{false}, editorOpen{false};
     std::atomic<int> editorWidth{0};
+    std::atomic<std::uint32_t> traceGeneration{0};
 
     void prepareToPlay(double, int) override;
     void releaseResources() override {}

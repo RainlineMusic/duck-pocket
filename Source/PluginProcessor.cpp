@@ -57,6 +57,7 @@ void DuckPocketAudioProcessor::prepareToPlay(double sr,int)
     decimation=juce::jmax(1,int(sr/2400.0));
     captured=0;
     capture={};
+    traceTime=0;traceGeneration.fetch_add(1,std::memory_order_relaxed);
 }
 
 void DuckPocketAudioProcessor::reset()
@@ -64,6 +65,7 @@ void DuckPocketAudioProcessor::reset()
     engine.reset(juce::jmax(1.,getSampleRate()),amount->load()*.01f);
     captured=0;
     capture={};
+    traceTime=0;traceGeneration.fetch_add(1,std::memory_order_relaxed);
 }
 
 bool DuckPocketAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) const
@@ -112,7 +114,7 @@ void DuckPocketAudioProcessor::processAudio(juce::AudioBuffer<float>& b,juce::Mi
         if(!show){captured=0;continue;}
         const float keyLo=juce::jmin(v.key[0],v.key[1]),keyHi=juce::jmax(v.key[0],v.key[1]);
         const float outLo=juce::jmin(v.out[0],v.out[1]),outHi=juce::jmax(v.out[0],v.out[1]);
-        if(!captured)capture={keyLo,keyHi,outLo,outHi,v.gain,traceTime};
+        if(!captured)capture={keyLo,keyHi,outLo,outHi,v.gain,traceTime,traceGeneration.load(std::memory_order_relaxed)};
         else {
             capture.keyLo=juce::jmin(capture.keyLo,keyLo); capture.keyHi=juce::jmax(capture.keyHi,keyHi);
             capture.outLo=juce::jmin(capture.outLo,outLo); capture.outHi=juce::jmax(capture.outHi,outHi);
