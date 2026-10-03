@@ -224,3 +224,7 @@ OpenGL на macOS deprecated, поэтому обещания выигрыша �
 - IBM Plex: Sans/Mono и Open Font License: https://github.com/IBM/plex ; руководство по гарнитуре: https://www.ibm.com/design/language/typography/typeface/ . При поставке включить конкретный OFL из скачанного пакета.
 
 **Точка остановки:** исходный код не изменён. Следующий шаг после подтверждения — фаза 1, аудит с воспроизводимыми регрессиями, затем layout и реализация визуальных токенов.
+
+## Implementation status
+
+The implementation is described in `IMPLEMENTATION-REPORT.md`, including exact percentage-Duration semantics, completed checks and remaining visual/host/performance work. Token values are implemented in `Source/UIStyle.h`; OFL fonts are bundled with their license. Only Mac/Win are delivery targets. OpenGL is opt-in and not a measured performance win. Software separable bloom, accumulated phosphor and bounded lighting/motion cues are implemented. Native host/performance verification and optional GPU refinements remain; the report distinguishes implementation from validation.

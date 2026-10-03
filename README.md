@@ -13,14 +13,18 @@ JUCE 8.0.4 sidechain VST3 / AAX by Rainline Music.
 - Both audio channels are represented in the oscilloscope.
 - Dynamic filters use parked fast paths; the processor uses pointer-based block access.
 - High-DPI chrome uses the actual graphics-context scale and is not regenerated while range handles are dragged.
-- M/S percentages, centred range titles, edge-aligned live frequency labels, and persistent expanded-panel state.
-- Old state values for removed controls are ignored while current settings are restored. Old automation for removed IDs cannot be restored.
+- M/S percentages, centred range titles, edge-aligned live frequency labels, and an always-visible three-column control row.
+- Old expanded-panel flags are ignored. Active parameter IDs, ranges and ordering are preserved; new percentage controls are appended.
 
 See `PERFORMANCE-VALIDATION.md` for the Pro Tools macOS validation procedure and `V010-NOTES.md` for version history.
 
 ## Processing
 
-A 5 ms lookahead soft-attack ducker. Influence 0-100 is linear depth; 100-150 is exponential. Duration sets the total key length (5 ms minimum): the first half holds, the second half fades out; 2000 ms means infinity. Changes apply live and every new hit restarts the event. The key filter is a non-resonant 12 dB/oct HP+LP and full-range endpoints bypass it. M/S balance changes processing depth, not output level.
+A 5 ms lookahead soft-attack ducker. Influence 0–100 is linear depth; 100–150 is exponential. M/S balance changes processing depth, not output level. The key filter is a non-resonant 12 dB/oct HP+LP; full-range endpoints bypass it.
+
+New instances use **Duration 1–100%, default 100% (AUTO)**. 100% exactly retains the original AUTO detector/envelope. Below 100%, the plugin measures the last completed key event and uses that duration for the next event: 50% halves the measured length, with a 5 ms minimum and the existing half-hold/half-cosine release. A new onset also closes the preceding measurement. The first event after prepare/reset uses AUTO until a length is known. Changes are smoothed and apply to the active envelope. Irregular hits, long tails and legato signals therefore cannot promise an exact fraction of the current unknown event.
+
+Old sessions retain millisecond Duration and its automation (5–2000 ms; the maximum is AUTO). Settings → Percentage Duration switches modes. The old `duration` ID/range is retained; `durationPercent` and `relativeDuration` are appended. State schema 2 preserves the selected mode and reads legacy XML. Window width is retained; obsolete expanded-panel state is ignored.
 
 Processing Range is a subtractive dynamic bell/shelf. The dry path is never permanently filtered; with no reduction the output is latency-aligned dry.
 
@@ -29,3 +33,15 @@ Processing Range is a subtractive dynamic bell/shelf. The dry path is never perm
 GitHub Actions builds macOS universal arm64+x86_64 and Windows x64 VST3/AAX packages, runs pluginval at strictness 5, and executes the current DSP tests.
 
 This is experimental software. Back up old projects and plug-ins before replacement.
+
+## Graphics
+
+Four semantic themes, embedded IBM Plex Sans/Mono (OFL license in `Assets/Fonts`), cached physical-scale materials and dial bodies. Key/filter use one data colour; output/reduction use the second. Duration and M/S are neutral. Freeze remains available. Chrome is rebuilt only on theme, size/DPI or graph-window changes, with resize coalescing. No idle ambient animations.
+
+Optional OpenGL: configure with `-DDUCK_ENABLE_OPENGL=ON`, then Settings → OpenGL (experimental). A single editor context renders a half-resolution emissive layer with separable blur and additive composition. Continuous repainting is disabled, static GPU textures are retained, and creation/shader failure returns to the native renderer. Context detach precedes child destruction. **Runtime default is off until Pro Tools/AAX profiling and host testing are complete.** OpenGL is deprecated on macOS ([Apple](https://developer.apple.com/documentation/appkit/nsopenglcontext)); Windows JUCE 8 native rendering already uses Direct2D. Enabling GL is not a verified performance improvement.
+
+## Validation
+
+Target platforms: **macOS universal arm64/x86_64 and Windows x64**, VST3/AAX. No Linux packages are delivered. `-DDUCK_BUILD_UI_TESTS=ON` builds processor integration tests and the real JUCE screenshot utility. Run `ctest --test-dir build -C Release --output-on-failure`. Run `PocketUITest <output-directory>` for software snapshots of all themes, three signal states, 1x/2x. Add `--native` on a supported desktop for the experimental GL lifecycle check.
+
+For Debug instrumentation use `-DDUCK_SANITIZER=address`, `undefined`, or `thread` (Clang/GCC); MSVC supports the address option. GUI/host sanitizer coverage must be run on the target OS. See `IMPLEMENTATION-REPORT.md` for actual completed checks, known limitations and the remaining host/performance matrix. Developer AAX artifacts are not a production PACE-signed release.
