@@ -60,6 +60,7 @@ public:
     // (e.g. "AUTO"); empty means keep the default infinity glyph.
     ModernDial(PocketLook&,juce::String,juce::String,juce::String,juce::uint32,bool=false,bool=false,bool=false,juce::String={});
     void paint(juce::Graphics&) override;
+    void setDurationMode(bool relative){unit=relative?"%":"ms";subtitle=relative?"Key length":"Legacy length";repaint();}
 private:
     PocketLook& look;
     juce::String title,subtitle,unit,infinityLabel;
@@ -74,9 +75,9 @@ public:
     void paint(juce::Graphics&) override;
     void paintOverChildren(juce::Graphics&) override;
     void resized() override;
-    void setPanelExpanded(bool);
 
 private:
+    friend struct DuckUiTestAccess;
     using SliderAttachment=juce::AudioProcessorValueTreeState::SliderAttachment;
     DuckPocketAudioProcessor& audioProcessor;
     PocketLook look;
@@ -85,7 +86,7 @@ private:
     ModernDial outputGain{look,"Output","dB","dB",0xfff1e84b,false,false,true};
     ResettableRangeSlider sidechainRange,processingRange;
     juce::Slider midSide;
-    juce::TextButton settingsButton{"settings"},bypassButton{"power"},panelButton{"panel"},freezeButton{"freeze"};
+    juce::TextButton settingsButton{"settings"},bypassButton{"power"},freezeButton{"freeze"};
     std::unique_ptr<SliderAttachment> influenceAttach,durationAttach,outputAttach,msAttach;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttach;
     std::unique_ptr<juce::ParameterAttachment> lowAttach,highAttach,processLowAttach,processHighAttach;
@@ -102,11 +103,14 @@ private:
     std::vector<PocketTrace> frozenGain,frozenSummary;
     bool gainFrozen=false,scopeFrozen=false;
     double gainResume=0,scopeResume=0;
-    bool expanded=false,ready=false,rangeGesture=false,processRangeGesture=false,capturingBlur=false,bypassTarget=false;
+    bool ready=false,rangeGesture=false,processRangeGesture=false,capturingBlur=false,bypassTarget=false;
     double resizeStamp=0,nextFrameMs=0; // nextFrameMs = time of the last rendered frame
     double displayTime=0,lastClock=0,lastLatest=0,gapMax=0,lastPaintedTime=-1;
     float bypassMix=0;
     double gainWindow=1.,scopeWindow=1.;
+    std::uint32_t traceGeneration=0;
+    bool durationIsRelative=false;
+    void syncDurationMode();
     juce::Image blurredSnapshot,chrome;
     bool chromeValid=false;
     float chromeScale=1.f;
