@@ -46,7 +46,7 @@ jobs:
         run: cmake -S . -B build -G Xcode -DJUCE_DIR="$PWD/JUCE" -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DDUCK_ENABLE_OPENGL=ON -DDUCK_BUILD_UI_TESTS=ON
 
       - name: Build VST3 and AAX
-        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null PocketProcessorTest PocketUITest
+        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null Pocket_mix_attack PocketProcessorTest PocketUITest
 
       - name: Run all regression tests
         run: ctest --test-dir build -C Release --output-on-failure
@@ -171,7 +171,7 @@ jobs:
         run: cmake -S . -B build -A x64 -DJUCE_DIR="${{ github.workspace }}/JUCE" -DDUCK_ENABLE_OPENGL=ON -DDUCK_BUILD_UI_TESTS=ON
 
       - name: Build VST3, AAX and DSP tests
-        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null PocketProcessorTest PocketUITest
+        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null Pocket_mix_attack PocketProcessorTest PocketUITest
 
       - name: Run all regression tests
         run: ctest --test-dir build -C Release --output-on-failure

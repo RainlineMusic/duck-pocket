@@ -8,7 +8,7 @@
 namespace pocket {
 struct Sample { std::array<float,2> dry{},key{},out{}; float gain=1; };
 class Engine {
-    struct Delayed { std::array<float,2> dry{},key{}; };
+    struct Delayed { std::array<float,2> dry{},key{}; float control=0; };
     struct Peak { std::uint64_t index=0; float value=0; };
     SidechainFilter filter;
     DynamicBandFilter processingFilter;
@@ -23,6 +23,9 @@ class Engine {
     float fastC=0,slowC=0,releaseC=0,endC=0,slew=0,attackC=0,bypassC=0;
     float targetPercent=100,percent=100,measuredLengthMs=0,eventLengthMs=0;
     std::uint64_t lastAudibleAge=0;
+    float mixScale=1,targetMixScale=1;
+    int attackSamples=0,peakWindow=240;
+    bool legacyAttack=true,peakReset=false,mixInit=false;
     bool relativeDuration=false;
     bool active=false,onsetHighPreviously=false,triggerArmed=true,durationInit=false,strongPreviously=false;
     static float clean(float v) noexcept { return std::isfinite(v)?v:0.f; }
@@ -42,12 +45,19 @@ public:
         const double t=std::clamp((elapsedMs-length*.5)/(length*.5),0.,1.);
         return float(.5+.5*std::cos(3.141592653589793*t));
     }
+    static float scaleReduction(float gain,float proportion) noexcept {
+        if(proportion>=1.f)return gain; // Preserve existing sessions bit for bit.
+        if(proportion<=0.f)return 1.f;
+        // Complete silence has no finite dB value; use a -120 dB floor only
+        // while scaling it. At 100% the original zero remains exactly zero.
+        return std::pow(std::max(gain,1.0e-6f),proportion);
+    }
     Engine(){reset(48000,1);}
     int latency() const noexcept {return lookahead;}
     void reset(double sr,float influence=1) {
         rate=safeRate(sr);lookahead=latencyForRate(rate);
         delay.assign(size_t(lookahead+1),{});peaks.assign(size_t(lookahead+2),{});
-        write=head=tail=0;clock=age=0;refractory=quiet=rearmQuiet=0;
+        write=head=tail=0;clock=age=0;mixScale=targetMixScale=1;mixInit=false;attackSamples=0;peakWindow=lookahead;legacyAttack=true;peakReset=false;refractory=quiet=rearmQuiet=0;
         filter.reset(rate);processingFilter.reset(rate);
         amount=targetAmount=std::clamp(clean(influence),0.f,1.5f);
         ms=targetMs=targetBypass=bypassMix=0;outputGain=targetOutputGain=1;envelope=fast=slow=eventPeak=0;smoothedControl=0;
@@ -59,7 +69,13 @@ public:
         slew=float(std::exp(-1/(rate*.005)));duration=targetDuration=2000;durationInit=false;
         targetPercent=percent=100;measuredLengthMs=eventLengthMs=0;lastAudibleAge=0;relativeDuration=false;
     }
-    void configure(float influence,float durationMs,float low=20,float high=20000,bool bypassed=false,float balance=0,float processLow=20,float processHigh=20000,float outputDb=0,float durationPercent=100,bool useRelativeDuration=false) noexcept {
+    void configure(float influence,float durationMs,float low=20,float high=20000,bool bypassed=false,float balance=0,float processLow=20,float processHigh=20000,float outputDb=0,float durationPercent=100,bool useRelativeDuration=false,float mixPercent=100,float attackMs=0,bool useLegacyAttack=true) noexcept {
+        targetMixScale=std::clamp(std::isfinite(mixPercent)?mixPercent*.01f:1.f,0.f,1.f);
+        if(!mixInit){mixScale=targetMixScale;mixInit=true;}
+        const int nextAttack=std::clamp(int(std::round(std::clamp(clean(attackMs),0.f,5.f)*rate*.001)),0,lookahead);
+        const bool nextLegacy=useLegacyAttack&&nextAttack==0;
+        if(nextAttack!=attackSamples||nextLegacy!=legacyAttack)peakReset=true;
+        attackSamples=nextAttack;legacyAttack=nextLegacy;peakWindow=legacyAttack?lookahead:attackSamples;
         relativeDuration=useRelativeDuration;targetPercent=std::clamp(clean(durationPercent),1.f,100.f);
         targetAmount=std::clamp(clean(influence),0.f,1.5f);targetDuration=std::clamp(clean(durationMs),5.f,2000.f);if(!durationInit){duration=targetDuration;durationInit=true;}
         filter.set(clean(low),clean(high));processingFilter.set(clean(processLow),clean(processHigh));
@@ -125,20 +141,42 @@ public:
             }
         }
         const float control=envelope*gate;if(active)++age;
-        while(head!=tail&&clock>std::uint64_t(lookahead)&&peaks[head].index<clock-std::uint64_t(lookahead))head=(head+1)%peaks.size();
-        while(head!=tail){size_t last=(tail+peaks.size()-1)%peaks.size();if(peaks[last].value>control)break;tail=last;}
-        peaks[tail]={clock,control};tail=(tail+1)%peaks.size();
+        // Feed the same maximum deque from a delayed detector stream. For the
+        // new attack its horizon is A samples before the delayed audio transient;
+        // for migrated projects it remains the original five-millisecond horizon.
+        const int detectorDelay=legacyAttack?0:lookahead-attackSamples;
+        auto pastControl=[&](int lag){return lag==0?control:delay[(write+delay.size()-size_t(lag))%delay.size()].control;};
+        auto pushPeak=[&](std::uint64_t index,float value){
+            while(head!=tail){const size_t last=(tail+peaks.size()-1)%peaks.size();if(peaks[last].value>value)break;tail=last;}
+            peaks[tail]={index,value};tail=(tail+1)%peaks.size();
+        };
+        if(peakReset){
+            head=tail=0;
+            // Bounded by the existing 5 ms buffer, with no allocations. Rebuild
+            // from actual history when Attack is automated so no hit is lost.
+            for(int j=peakWindow;j>0;--j)if(clock>=std::uint64_t(j)&&clock>=std::uint64_t(detectorDelay+j))pushPeak(clock-std::uint64_t(j),pastControl(detectorDelay+j));
+            peakReset=false;
+        }
+        while(head!=tail&&clock>std::uint64_t(peakWindow)&&peaks[head].index<clock-std::uint64_t(peakWindow))head=(head+1)%peaks.size();
+        pushPeak(clock,clock>=std::uint64_t(detectorDelay)?pastControl(detectorDelay):0.f);
         const float predicted=peaks[head].value;
-        // Soft attack inside the lookahead window: the duck ramps in ahead of the hit.
-        smoothedControl=predicted>smoothedControl?predicted+attackC*(smoothedControl-predicted):predicted;
-        delay[write]={input,{key[0]*gate,key[1]*gate}};const size_t read=(write+1)%delay.size();
+        if(legacyAttack)smoothedControl=predicted>smoothedControl?predicted+attackC*(smoothedControl-predicted):predicted;
+        else if(attackSamples==0)smoothedControl=predicted;
+        else {
+            // Finite ramp, reaching the requested reduction by the transient.
+            // The delayed detector is a lower bound even for very short hits.
+            smoothedControl=predicted>smoothedControl?std::min(predicted,smoothedControl+predicted/float(attackSamples)):predicted;
+            if(clock>=std::uint64_t(lookahead))smoothedControl=std::max(smoothedControl,pastControl(lookahead));
+        }
+        delay[write]={input,{key[0]*gate,key[1]*gate},control};const size_t read=(write+1)%delay.size();
         Sample result;result.dry=delay[read].dry;result.key=delay[read].key;
         amount=targetAmount+slew*(amount-targetAmount);ms=targetMs+slew*(ms-targetMs);outputGain=targetOutputGain+slew*(outputGain-targetOutputGain);
         if(std::abs(amount-targetAmount)<1e-4f)amount=targetAmount;
         if(std::abs(ms-targetMs)<1e-4f)ms=targetMs;
         if(std::abs(outputGain-targetOutputGain)<1e-6f)outputGain=targetOutputGain;
         const float reduction=std::clamp(effectiveDepth(amount)*smoothedControl,0.f,1.f);
-        const float gm=1-reduction*(1-std::max(0.f,ms)),gs=1-reduction*(1+std::min(0.f,ms));
+        mixScale=targetMixScale+slew*(mixScale-targetMixScale);if(std::abs(mixScale-targetMixScale)<1e-4f)mixScale=targetMixScale;
+        const float gm=scaleReduction(1-reduction*(1-std::max(0.f,ms)),mixScale),gs=scaleReduction(1-reduction*(1+std::min(0.f,ms)),mixScale);
         const float mid=(result.dry[0]+result.dry[1])*.5f,side=(result.dry[0]-result.dry[1])*.5f;
         // v0.9: the dry path is never filtered. The band filter only extracts the
         // selection, which is then subtracted by the amount of ducking:
@@ -157,7 +195,7 @@ public:
         // The meter follows the gain the engine asked for, so the history stays the
         // same whether the reduction runs wideband or inside the selected band.
         result.gain=std::clamp((gm+gs)*.5f,0.f,1.f);
-        if(reduction==0){result.out=result.dry;result.gain=1;}
+        if(reduction==0||mixScale==0){result.out=result.dry;result.gain=1;}
         result.out[0]*=outputGain;result.out[1]*=outputGain;
 
         // Click-free but perceptually immediate bypass. Both sides are already
