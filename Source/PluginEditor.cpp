@@ -75,6 +75,12 @@ void PocketLook::drawLinearSlider(juce::Graphics& g,int x,int y,int w,int h,floa
     if(style==juce::Slider::TwoValueHorizontal){thumb(minPos);thumb(maxPos);}else thumb(pos);
 }
 ModernDial::ModernDial(PocketLook& l,juce::String t,juce::String sub,juce::String u,juce::uint32 a,bool inf,bool infMin,bool compactDial,juce::String infLabel):look(l),title(t),subtitle(sub),unit(u),infinity(inf),compact(compactDial){juce::ignoreUnused(a,infMin,infLabel);setSliderStyle(juce::Slider::RotaryVerticalDrag);setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);setName(t);setWantsKeyboardFocus(true);}
+float ModernDial::valueTextHeight(const juce::String& value) const {
+    const float preferred=compact?17.f:(title=="Influence"?29.f:25.f);
+    const float width=float(juce::jmin(getWidth(),getHeight()))*(compact?.66f:.71f);
+    const float textWidth=juce::GlyphArrangement::getStringWidth(pocketFont(preferred,true),value);
+    return juce::jmax(11.f,juce::jmin(preferred,textWidth>0?preferred*width/textWidth:preferred));
+}
 void ModernDial::paint(juce::Graphics& g){
     const auto t=look.tokens();const float size=float(juce::jmin(getWidth(),getHeight()));
     const auto c=getLocalBounds().toFloat().getCentre();const float r=size*(compact?.33f:.355f),ring=r+size*.047f;
@@ -108,7 +114,7 @@ void ModernDial::paint(juce::Graphics& g){
     juce::String value=unit=="dB"?juce::String(getValue(),2):juce::String(getValue(),unit=="%"?0:0)+(unit=="%"?"%":" ms");
     if(autoValue&&unit!="%")value="AUTO";
     g.setFont(pocketFont(compact?13.2f:15.f,false,true));g.setColour(t.ink);g.drawText(title,juce::Rectangle<float>{c.x-r,c.y-(compact?22.f:33.f),2*r,20},juce::Justification::centred);
-    g.setFont(pocketFont(compact?17.f:(title=="Influence"?29.f:25.f),true));g.drawText(value,juce::Rectangle<float>{c.x-r,c.y-(compact?4.f:12.f),2*r,32},juce::Justification::centred);
+    g.setFont(pocketFont(valueTextHeight(value),true));g.drawText(value,juce::Rectangle<float>{c.x-r,c.y-(compact?4.f:12.f),2*r,32},juce::Justification::centred);
     g.setFont(pocketFont(13.2f));g.setColour(t.muted);g.drawText(autoValue?juce::String(unit=="%"?"AUTO":"LEGACY"):subtitle,juce::Rectangle<float>{c.x-r,c.y+(compact?18.f:24.f),2*r,18},juce::Justification::centred);
 }
 DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioProcessor& p):AudioProcessorEditor(&p),audioProcessor(p){

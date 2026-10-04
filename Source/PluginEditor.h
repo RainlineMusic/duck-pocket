@@ -69,6 +69,7 @@ public:
     void mouseUp(const juce::MouseEvent& e) override {juce::Slider::mouseUp(e);animate(isMouseOver()?.65f:0);}
     void paint(juce::Graphics&) override;
     void setMeter(float reduction,float signal){if(std::abs(gr-reduction)>.001f||std::abs(activity-signal)>.005f){gr=reduction;activity=signal;repaint();}}
+    float valueTextHeight(const juce::String&) const;
     bool isAutoValue() const {return infinity&&getValue()>=getMaximum();}
     void setDurationMode(bool relative){unit=relative?"%":"ms";subtitle=relative?"Key length":"Legacy length";repaint();}
 private:
