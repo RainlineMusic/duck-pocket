@@ -11,7 +11,7 @@ public:
     struct Frame {std::array<Plot,2> plots;int width=1,height=1;std::uint64_t chromeRevision=0;};
     juce::OpenGLContext context;
     std::atomic<bool> ready{false},failed{false},presented{false};
-    std::atomic<std::uint64_t> frames{0};
+    std::atomic<std::uint64_t> frames{0},blurredFrames{0};
     PocketGlowRenderer(){context.setRenderer(this);context.setContinuousRepainting(false);context.setComponentPaintingEnabled(true);context.setOpenGLVersionRequired(juce::OpenGLContext::openGL3_2);}
     ~PocketGlowRenderer() override {stop();}
     void attach(juce::Component& target){failed.store(false);context.attachTo(target);}
@@ -41,7 +41,7 @@ public:
         if(!ready.load())return;
         std::shared_ptr<const Frame> frame;{std::lock_guard<std::mutex> guard(exchange);frame=pending;}
         if(!frame)return;
-        ++frames;const auto defaultTarget=juce::OpenGLFrameBuffer::getCurrentFrameBufferTarget();
+        frames.fetch_add(1,std::memory_order_relaxed);const auto defaultTarget=juce::OpenGLFrameBuffer::getCurrentFrameBufferTarget();
         const float scale=float(context.getRenderingScale());const int vw=juce::jmax(1,juce::roundToInt(frame->width*scale)),vh=juce::jmax(1,juce::roundToInt(frame->height*scale));
         glViewport(0,0,vw,vh);juce::OpenGLHelpers::clear(juce::Colours::transparentBlack);glDisable(GL_DEPTH_TEST);glDisable(GL_BLEND);
         context.extensions.glBindVertexArray(vertexArray);
@@ -54,6 +54,7 @@ public:
                     if(!r.horizontal.initialise(context,w,h)||!r.vertical.initialise(context,w,h)){failed.store(true);ready.store(false);return;}}
                 r.horizontal.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.mask.getTextureID(),(1.f+plot.intensity*6.f)/float(w),0,1);
                 r.vertical.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.horizontal.getTextureID(),0,(1.f+plot.intensity*6.f)/float(h),1);
+                blurredFrames.fetch_add(1,std::memory_order_relaxed);
             }
             context.extensions.glBindFramebuffer(GL_FRAMEBUFFER,defaultTarget);
             const auto bounds=plot.bounds.toFloat()*scale;glViewport(juce::roundToInt(bounds.getX()),vh-juce::roundToInt(bounds.getBottom()),juce::roundToInt(bounds.getWidth()),juce::roundToInt(bounds.getHeight()));

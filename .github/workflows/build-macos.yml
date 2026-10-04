@@ -140,6 +140,20 @@ jobs:
           path: pluginval-macos.log
           if-no-files-found: ignore
 
+      - name: Probe native OpenGL and 100 editor peer lifecycles
+        continue-on-error: true # Hosted runners may not expose a usable GPU/context.
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 -c 'import subprocess,sys; result=subprocess.run(sys.argv[1:],capture_output=True,text=True,timeout=300); print(result.stdout,end=""); print(result.stderr,end="",file=sys.stderr); sys.exit(result.returncode)' build/PocketUITest_artefacts/Release/PocketUITest --gl-smoke 2>&1 | tee native-gl-macos.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-gl-log-macos
+          path: native-gl-macos.log
+          if-no-files-found: ignore
+
   windows:
     runs-on: windows-2022
     timeout-minutes: 40
@@ -204,4 +218,26 @@ jobs:
         with:
           name: validation-log-windows
           path: pluginval-windows.log
+          if-no-files-found: ignore
+
+      - name: Probe native OpenGL and 100 editor peer lifecycles
+        continue-on-error: true # Hosted runners may not expose a usable GPU/context.
+        shell: pwsh
+        run: |
+          $out = "$PWD/native-gl-windows.stdout.log"
+          $err = "$PWD/native-gl-windows.stderr.log"
+          $probe = Start-Process -FilePath "./build/PocketUITest_artefacts/Release/PocketUITest.exe" -ArgumentList '--gl-smoke' -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          if (-not $probe.WaitForExit(300000)) {
+            Stop-Process -Id $probe.Id -Force
+            'TIMEOUT: native OpenGL probe exceeded 300 seconds' | Tee-Object -FilePath native-gl-windows.log
+            exit 124
+          }
+          Get-Content $out, $err | Tee-Object -FilePath native-gl-windows.log
+          if ($probe.ExitCode -ne 0) { exit $probe.ExitCode }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-gl-log-windows
+          path: native-gl-windows.log
           if-no-files-found: ignore

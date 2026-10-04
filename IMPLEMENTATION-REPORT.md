@@ -72,10 +72,10 @@ Full-window Debug software snapshots averaged about 71.7 ms after warming the ca
 
 The following requests are not declared complete:
 
-1. **Final-head target CI results** must remain green. Revision `98ac9735` passed Mac/Win VST3/AAX builds, all six tests, UI captures, pluginval 5 and Mac ASan/UBSan/TSan. The final UI endpoint fixes are re-running those checks; current status and run links are recorded in PR #6.
-2. **Pro Tools/AAX, Reaper and Live manual tests**, real monitor/DPI changes and native GL open/close stress. The 100 editor test is component lifecycle without a native host peer.
-3. **Native A/B profiling:** native/software/GL, idle vs signal, 1/8/32 instances, 100 peer attach/detach cycles. No CPU/GPU improvement numbers are available; GL remains off.
-4. **Target leak checks and native host instrumentation.** Mac TSan and ASan/UBSan passed the concurrent processor trace exchange, component lifecycle and offscreen UI captures on revision `98ac9735`. Native host peers, GPU lifecycle and production DAW sessions remain outside this instrumentation.
+1. **Target CI results** passed on revision `984ee9b0`: Mac/Win VST3/AAX builds, all six tests, UI captures, pluginval 5 and Mac ASan/UBSan/TSan. The native GPU diagnostic added later is reported separately; it does not change the release gate.
+2. **Pro Tools/AAX, Reaper and Live manual tests**, real monitor/DPI changes and native GL open/close stress inside a host. The optional CI probe exercises native peers without a DAW only if the runner exposes a usable context.
+3. **Native A/B profiling:** native/software/GL, idle vs signal and 1/8/32 instances. No CPU/GPU improvement numbers are available; GL remains off. The new peer lifecycle probe records elapsed time, not host frame time or a performance comparison.
+4. **Target leak checks and native host instrumentation.** Mac TSan and ASan/UBSan passed the concurrent processor trace exchange, component lifecycle and offscreen UI captures on revision `984ee9b0`. Production DAW sessions remain outside this instrumentation.
 5. **Visual refinements:** the optional GPU renderer does not yet share the accumulated software phosphor buffer; its blur needs native QA. Age brightness fade is implemented, while age-dependent sharpness is approximated by the low-resolution trail. Material shadows are cached blurred paths; inset glass depth uses the cached directional fill/grid rather than a separate ambient-occlusion simulation. The NOW cue detects a real rising reduction edge and does not claim to expose the DSP onset detector directly.
 6. **Hardware null renders** on musical session materials, not only portable deterministic signals. Invalid-buffer bug fixes are intentionally outside the bit-exact promise.
 
@@ -94,3 +94,7 @@ Release CI full-window, warmed **offscreen snapshot** means on revision c830f991
 ## Final endpoint audit
 
 Revision `98ac9735` completed both target build jobs and the Mac sanitizer matrix successfully (build run 37165127695; sanitizers 37165127622), including dirty-region assertions, failed-GL fallback opacity and bundle font licenses. Final display-only fixes distinguish finite Duration endpoints from AUTO and fit negative Output values; their dedicated UI checks run with all four theme captures. The final-head result is linked in PR #6 without implying manual host/GPU validation.
+
+## Native GPU diagnostic
+
+The experimental `PocketUITest --gl-smoke` opens a real desktop peer, attaches one OpenGL context per editor, drives a key signal through the processor, requires a native composed frame and a nonzero GPU blur-pass count, then creates and destroys 100 native peers with the renderer enabled. It prints total elapsed time for context lifecycle diagnosis. Mac/Win CI captures its log as a separate artifact and allows failure if a hosted runner lacks a usable context. A successful diagnostic would verify shader/FBO execution and basic teardown on that runner; it would not establish Pro Tools compatibility, visual parity or an OpenGL CPU/GPU advantage. The ordinary six tests, pluginval and package jobs remain required.

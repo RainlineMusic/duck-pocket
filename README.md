@@ -42,6 +42,6 @@ Optional OpenGL: configure with `-DDUCK_ENABLE_OPENGL=ON`, then Settings → Ope
 
 ## Validation
 
-Target platforms: **macOS universal arm64/x86_64 and Windows x64**, VST3/AAX. No Linux packages are delivered. `-DDUCK_BUILD_UI_TESTS=ON` builds processor integration tests and the real JUCE screenshot utility. Run `ctest --test-dir build -C Release --output-on-failure`. Run `PocketUITest <output-directory>` for software snapshots of all themes, three signal states, 1x/2x. Add `--native` on a supported desktop for the experimental GL lifecycle check.
+Target platforms: **macOS universal arm64/x86_64 and Windows x64**, VST3/AAX. No Linux packages are delivered. `-DDUCK_BUILD_UI_TESTS=ON` builds processor integration tests and the real JUCE screenshot utility. Run `ctest --test-dir build -C Release --output-on-failure`. Run `PocketUITest <output-directory>` for software snapshots of all themes, three signal states, 1x/2x. Use `PocketUITest --gl-smoke` on a supported desktop for a native context, signal-driven GPU blur and 100 peer attach/detach cycles. CI records this experimental probe separately; a hosted runner may have no usable GPU. The probe does not measure Pro Tools performance.
 
 For Debug instrumentation use `-DDUCK_SANITIZER=address`, `undefined`, or `thread` (Clang/GCC); MSVC supports the address option. GUI/host sanitizer coverage must be run on the target OS. See `IMPLEMENTATION-REPORT.md` for actual completed checks, known limitations and the remaining host/performance matrix. Developer AAX artifacts are not a production PACE-signed release.

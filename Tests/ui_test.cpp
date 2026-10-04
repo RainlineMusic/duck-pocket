@@ -12,13 +12,41 @@ struct DuckUiTestAccess {
  static void gl(DuckPocketAudioProcessorEditor& e,bool enabled){e.setOpenGL(enabled,false);}
  static void simulateFailedGl(DuckPocketAudioProcessorEditor& e){e.setOpaque(false);e.glowRenderer=std::make_unique<PocketGlowRenderer>();e.glowRenderer->ready.store(false);e.glowRenderer->presented.store(true);e.glowRenderer->failed.store(true);e.signalPeak=e.currentReduction=0;}
  static bool ready(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->ready.load();}
+ static bool rendered(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->presented.load()&&e.glowRenderer->frames.load()>0;}
+ static std::uint64_t blurredFrames(DuckPocketAudioProcessorEditor& e){return e.glowRenderer?e.glowRenderer->blurredFrames.load():0;}
+ static void trigger(DuckPocketAudioProcessorEditor& e){e.repaint();if(e.glowRenderer)e.glowRenderer->context.triggerRepaint();}
 #endif
 };
 static void check(bool v,const char* message){if(!v){std::cerr<<"FAIL "<<message<<'\n';std::abort();}}
 static void pump(int milliseconds){juce::MessageManager::getInstance()->runDispatchLoopUntil(milliseconds);}
-int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI init;const juce::File output(argc>1?argv[1]:"screenshots");output.createDirectory();
+int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI init;const bool glSmoke=argc>1&&juce::String(argv[1])=="--gl-smoke";const juce::File output(!glSmoke&&argc>1?argv[1]:"screenshots");if(!glSmoke)output.createDirectory();
  DuckPocketAudioProcessor p;p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
  std::unique_ptr<DuckPocketAudioProcessorEditor> e(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));const bool native=argc>2&&juce::String(argv[2])=="--native";if(native){e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);}e->setSize(960,760);DuckUiTestAccess::settle(*e);
+ if(glSmoke){
+#if DUCK_ENABLE_OPENGL
+  const double start=juce::Time::getMillisecondCounterHiRes();
+  for(int cycle=0;cycle<100;++cycle){
+   if(cycle>0){e.reset(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));e->setSize(960,760);}
+   e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);
+   check(e->getPeer()!=nullptr,"native editor peer created");DuckUiTestAccess::gl(*e,true);
+   for(int poll=0;poll<100&&!DuckUiTestAccess::ready(*e);++poll){DuckUiTestAccess::trigger(*e);pump(20);}
+   check(DuckUiTestAccess::ready(*e),"native OpenGL context and shaders created");
+   if(cycle==0){
+    juce::AudioBuffer<float> samples(4,64);juce::MidiBuffer midi;
+    for(int block=0;block<200;++block){for(int i=0;i<64;++i){const double time=double(block*64+i)/48000.;const float out=float(.25*std::sin(time*6.2831853*83));const float key=float(.8*std::sin(time*6.2831853*110));samples.setSample(0,i,out);samples.setSample(1,i,out);samples.setSample(2,i,key);samples.setSample(3,i,key);}p.processBlock(samples,midi);}
+    DuckUiTestAccess::tick(*e);
+   }
+   for(int poll=0;poll<75&&!(cycle==0?DuckUiTestAccess::blurredFrames(*e)>0:DuckUiTestAccess::rendered(*e));++poll){DuckUiTestAccess::trigger(*e);pump(20);}
+   check(DuckUiTestAccess::rendered(*e),"native GPU composed a graph frame");
+   if(cycle==0)check(DuckUiTestAccess::blurredFrames(*e)>0,"native GPU blur rendered a live signal");
+   DuckUiTestAccess::gl(*e,false);e->removeFromDesktop();e.reset();
+  }
+  std::cout<<"PASS native OpenGL glow and 100 editor peer lifecycles, total_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';
+#else
+  std::cout<<"SKIP OpenGL is disabled at compile time\n";
+#endif
+  return 0;
+ }
  PocketLook dialLook;ModernDial durationDial(dialLook,"Duration","","ms",0,true);durationDial.setRange(5,2000,1);durationDial.setSkewFactor(.25);durationDial.setValue(1999,juce::dontSendNotification);check(!durationDial.isAutoValue(),"1999 ms remains finite");durationDial.setValue(2000,juce::dontSendNotification);check(durationDial.isAutoValue(),"2000 ms is AUTO");durationDial.setRange(1,100,1);durationDial.setValue(99,juce::dontSendNotification);check(!durationDial.isAutoValue(),"99 percent remains finite");durationDial.setValue(100,juce::dontSendNotification);check(durationDial.isAutoValue(),"100 percent is AUTO");
  ModernDial outputDial(dialLook,"Output","dB","dB",0,false,false,true);for(int size:{63,76}){outputDial.setSize(size,size);for(const char* value:{"-12.00","-0.01","0.00","6.00"}){const float height=outputDial.valueTextHeight(value);check(height>=11.f,"Output value stays readable");check(juce::GlyphArrangement::getStringWidth(pocketFont(height,true),value)<=float(size)*.66f+.01f,"Output endpoints fit compact dial");}}
  const PocketTheme themes[]{PocketTheme::Neon,PocketTheme::SolidDark,PocketTheme::SolidWhite,PocketTheme::Amber};const char* names[]{"neon","dark","white","amber"};
