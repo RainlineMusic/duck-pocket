@@ -119,6 +119,10 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  PocketSoftwareGlow::boxBlur(line,smooth,true,6);
  for(int x=7;x<58;++x)check(smooth.getPixelAt(x,0).getRed()-smooth.getPixelAt(x-1,0).getRed()==3,"bypass blur preserves a continuous gradient without a mosaic grid");
  PocketSoftwareGlow::boxBlur(edge,edgeBlur,true,12);check(edgeBlur.getPixelAt(0,0)==juce::Colours::white,"box blur safely clamps a one-pixel image");
+ juce::Image emptyMask(juce::Image::ARGB,8,8,true,juce::SoftwareImageType());check(!PocketSoftwareGlow::hasEmission(emptyMask),"idle mask has no glow to composite");emptyMask.setPixelAt(4,4,juce::Colours::white);check(PocketSoftwareGlow::hasEmission(emptyMask),"signal mask enables the glow pass");
+ PocketSoftwareGlow emptyGlow;emptyGlow.prepare(32,32);juce::Image glass(juce::Image::ARGB,32,32,true,juce::SoftwareImageType()),idleGlass(juce::Image::ARGB,32,32,true,juce::SoftwareImageType());
+ for(int y=0;y<32;++y)for(int x=0;x<32;++x)glass.setPixelAt(x,y,juce::Colour(juce::uint8(x*7),juce::uint8(y*7),juce::uint8((x+y)*3)));{juce::Graphics g(idleGlass);g.drawImageAt(glass,0,0);emptyGlow.paint(g,glass,{0,0,32,32},1,1,1,false);}
+ for(int y=0;y<32;++y)for(int x=0;x<32;++x)check(idleGlass.getPixelAt(x,y)==glass.getPixelAt(x,y),"empty glow preserves every cached glass pixel");
  PocketPhosphorTrail phosphor;juce::Image emission(juce::Image::ARGB,100,8,true,juce::SoftwareImageType());
  emission.setPixelAt(60,4,juce::Colours::white);phosphor.apply(emission,1.,1.);
  emission.clear(emission.getBounds());phosphor.apply(emission,1.1,1.);

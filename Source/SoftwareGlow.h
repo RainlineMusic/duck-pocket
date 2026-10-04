@@ -44,6 +44,7 @@ public:
     void paint(juce::Graphics& g,const juce::Image& background,juce::Rectangle<float> bounds,float intensity,double time,double window,bool phosphor){
         if(intensity<=.0001f||!background.isValid()){g.drawImage(core,bounds);return;}
         if(phosphor)phosphorTrail.apply(emission,time,window);
+        if(!hasEmission(emission)){g.drawImage(core,bounds);return;}
         const int step=1;blur(emission,horizontal,true,step);blur(horizontal,soft,false,step);
         upscaled.clear(upscaled.getBounds());{juce::Graphics ug(upscaled);ug.setImageResamplingQuality(juce::Graphics::highResamplingQuality);ug.drawImage(soft,upscaled.getBounds().toFloat());}
         // Additive RGB over the cached glass; crisp cores are composited last.
@@ -55,6 +56,15 @@ public:
             d->setARGB(255,juce::uint8(juce::jmin(255,int(b.getRed())+juce::roundToInt(e->getRed()*intensity))),juce::uint8(juce::jmin(255,int(b.getGreen())+juce::roundToInt(e->getGreen()*intensity))),juce::uint8(juce::jmin(255,int(b.getBlue())+juce::roundToInt(e->getBlue()*intensity))));
         }
         g.drawImage(composite,bounds);g.drawImage(core,bounds);
+    }
+    // Empty masks must leave the existing glass untouched. Besides avoiding
+    // useless blur work, this prevents a second resampling of the cached grid.
+    static bool hasEmission(const juce::Image& image){
+        if(!image.isValid())return false;
+        juce::Image::BitmapData pixels(image,juce::Image::BitmapData::readOnly);
+        for(int y=0;y<pixels.height;++y)for(int x=0;x<pixels.width;++x)
+            if(reinterpret_cast<const juce::PixelARGB*>(pixels.getPixelPointer(x,y))->getAlpha()>0)return true;
+        return false;
     }
     // Contiguous sliding-window kernel: no skipped texels or sparse-grid artefacts.
     // Three box passes approximate a Gaussian, with work independent of radius.

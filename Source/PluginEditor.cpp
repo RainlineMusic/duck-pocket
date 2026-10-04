@@ -499,8 +499,8 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
             const float raster=g.getInternalContext().getPhysicalPixelScaleFactor()*.5f;
             layer.emission=juce::Image(juce::Image::ARGB,juce::jmax(1,juce::roundToInt(plot.getWidth()*raster)),juce::jmax(1,juce::roundToInt(plot.getHeight()*raster)),true,juce::SoftwareImageType());
             juce::Graphics eg(layer.emission);eg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(raster));emissionGraphics=&eg;graph(g,{32,y,752,160},i==0);emissionGraphics=nullptr;
-            layer.intensity=(gainFrozen||scopeFrozen)?0.f:1.f;
             if(i==1){if(scopeFrozen)gpuPhosphor[size_t(i)].reset();else gpuPhosphor[size_t(i)].apply(layer.emission,displayTime,scopeWindow);}
+            layer.intensity=(gainFrozen||scopeFrozen||!PocketSoftwareGlow::hasEmission(layer.emission))?0.f:1.f;
         }
         lastGpuFrame=frame;glowRenderer->publish(std::move(frame));
         }
