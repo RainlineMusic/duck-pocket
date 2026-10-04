@@ -78,7 +78,7 @@ public:
     void paint(juce::Graphics&) override;
     juce::String displayedValue() const {
         if(unit=="balance")return juce::String(juce::roundToInt(std::abs(getValue())*100.))+"%";
-        if(unit=="dB")return juce::String(getValue(),2);
+        if(unit=="dB")return juce::String(std::abs(getValue())<.005?0.:getValue(),2);
         if(isAutoValue()&&unit=="ms")return "AUTO";
         return juce::String(getValue(),title=="Influence"?1:0)+(unit=="%"?"%":" ms");
     }
