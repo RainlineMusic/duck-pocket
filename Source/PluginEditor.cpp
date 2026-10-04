@@ -97,7 +97,7 @@ void ModernDial::paint(juce::Graphics& g){
     g.drawImageTransformed(body,juce::AffineTransform::scale(1.f/bodyScale));
     if(emphasis>.001f){g.setColour(t.ink.withAlpha(emphasis*.16f));g.drawEllipse(juce::Rectangle<float>(2*r,2*r).withCentre(c).reduced(1),1.f);}
     const float proportion=float(valueToProportionOfLength(getValue())),start=juce::MathConstants<float>::pi*1.25f,end=start+juce::MathConstants<float>::pi*1.5f*proportion;
-    const bool autoValue=infinity&&proportion>.9995f;
+    const bool autoValue=isAutoValue();
     auto colour=title=="Duration"?t.neutral:t.out;
     juce::Path track,arc;track.addCentredArc(c.x,c.y,ring,ring,0,start,juce::MathConstants<float>::pi*2.75f,true);stroke(g,track,t.glass,compact?3.f:4.f);
     if(proportion>0&&!autoValue){arc.addCentredArc(c.x,c.y,ring,ring,0,start,end,true);stroke(g,arc,colour,compact?2.5f:3.f);}
