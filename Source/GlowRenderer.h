@@ -11,12 +11,17 @@ public:
     struct Frame {std::array<Plot,2> plots;int width=1,height=1;std::uint64_t chromeRevision=0;};
     juce::OpenGLContext context;
     std::atomic<bool> ready{false},failed{false},presented{false};
-    std::atomic<std::uint64_t> frames{0},blurredFrames{0};
+    std::atomic<std::uint64_t> frames{0},blurredFrames{0},presentedRevision{0};
     PocketGlowRenderer(){context.setRenderer(this);context.setContinuousRepainting(false);context.setComponentPaintingEnabled(true);context.setOpenGLVersionRequired(juce::OpenGLContext::openGL3_2);}
     ~PocketGlowRenderer() override {stop();}
     void attach(juce::Component& target){failed.store(false);context.attachTo(target);}
     void stop(){context.setContinuousRepainting(false);context.detach();ready.store(false);presented.store(false);}
-    void publish(std::shared_ptr<const Frame> next){std::lock_guard<std::mutex> guard(exchange);pending=std::move(next);}
+    void publish(std::shared_ptr<const Frame> next){
+        {std::lock_guard<std::mutex> guard(exchange);pending=std::move(next);}
+        // Component painting publishes after renderOpenGL. Present this frame
+        // even when transport is stopped and no next audio/UI tick is coming.
+        context.triggerRepaint();
+    }
     void newOpenGLContextCreated() override {
         using namespace juce::gl;
         failed.store(false);ready.store(false);
@@ -73,7 +78,7 @@ public:
             glDisable(GL_BLEND);draw(*copyProgram,r.base.getTextureID(),0,0,1);
             if(plot.intensity>.001f&&plot.emission.isValid()){glEnable(GL_BLEND);glBlendFunc(GL_ONE,GL_ONE);draw(*copyProgram,r.vertical.getTextureID(),0,0,plot.intensity);glDisable(GL_BLEND);}
         }
-        presented.store(true);lastFrame=frame;context.extensions.glBindFramebuffer(GL_FRAMEBUFFER,defaultTarget);glViewport(0,0,vw,vh);
+        presentedRevision.store(frame->chromeRevision);presented.store(true);lastFrame=frame;context.extensions.glBindFramebuffer(GL_FRAMEBUFFER,defaultTarget);glViewport(0,0,vw,vh);
         context.extensions.glBindBuffer(GL_ARRAY_BUFFER,0);context.extensions.glBindVertexArray(0);
     }
 private:

@@ -25,6 +25,7 @@ struct DuckUiTestAccess {
  static bool ready(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->ready.load();}
  static bool failed(DuckPocketAudioProcessorEditor& e){return !e.glowRenderer||e.glowRenderer->failed.load();}
  static bool fellBack(DuckPocketAudioProcessorEditor& e){return !e.glowRenderer&&e.isOpaque();}
+ static bool themePresented(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->presentedRevision.load()==e.chromeBuildCount;}
  static bool rendered(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->presented.load()&&e.glowRenderer->frames.load()>0;}
  static std::uint64_t blurredFrames(DuckPocketAudioProcessorEditor& e){return e.glowRenderer?e.glowRenderer->blurredFrames.load():0;}
  static void trigger(DuckPocketAudioProcessorEditor& e){e.repaint();if(e.glowRenderer)e.glowRenderer->context.triggerRepaint();}
@@ -79,6 +80,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    for(int poll=0;poll<75&&!(cycle==0?DuckUiTestAccess::blurredFrames(*e)>0:DuckUiTestAccess::rendered(*e));++poll){DuckUiTestAccess::trigger(*e);pump(20);}
    check(DuckUiTestAccess::rendered(*e),"native GPU composed a graph frame");
    if(cycle==0)check(DuckUiTestAccess::blurredFrames(*e)>0,"native GPU blur rendered a live signal");
+   if(cycle==0){DuckUiTestAccess::theme(*e,PocketTheme::Amber);for(int poll=0;poll<75&&!DuckUiTestAccess::themePresented(*e);++poll)pump(20);check(DuckUiTestAccess::themePresented(*e),"paused GPU presents the new theme without audio");}
    DuckUiTestAccess::gl(*e,false);e->removeFromDesktop();e.reset();
   }
   std::cout<<"PASS native OpenGL glow and 100 editor peer lifecycles, total_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';
