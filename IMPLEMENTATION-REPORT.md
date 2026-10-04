@@ -1,3 +1,7 @@
+# Bypass blur sanitizer fix
+
+macOS ASan/UBSan run 37231553281 caught undefined edge-pointer arithmetic in JUCE 8.0.4 ImageConvolutionKernel during bypass capture. The call is replaced by the shared, clamped, premultiplied separable blur; sanitizer settings are unchanged. Bypass-collapse regression and a 1×1 edge case exercise the replacement. DSP/processor sources are unaffected. The final CI revision supersedes the failed intermediate one.
+
 # Compact luminous refinement — current
 
 Three separate UI bug commits: timeline cut-offs after reset; paused GPU presentation; negative-zero Output formatting. No DSP/processor/parameter code changed. UI regression reproduces freeze/resume + host reset followed by short fresh audio and checks that the scope actually paints immediately. Native GPU probe checks a new chrome revision is presented after a paused theme change.

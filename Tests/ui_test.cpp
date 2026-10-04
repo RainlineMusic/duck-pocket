@@ -99,6 +99,9 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
 #endif
   return 0;
  }
+ juce::Image edge(juce::Image::ARGB,1,1,true,juce::SoftwareImageType()),edgeBlur(juce::Image::ARGB,1,1,true,juce::SoftwareImageType());edge.setPixelAt(0,0,juce::Colours::white);
+ PocketSoftwareGlow::blur(edge,edgeBlur,true,2);check(edgeBlur.getPixelAt(0,0)==juce::Colours::white,"single-pixel blur clamps edges safely");
+ PocketSoftwareGlow::blur(edgeBlur,edge,false,2);check(edge.getPixelAt(0,0)==juce::Colours::white,"vertical blur also clamps edges safely");
  PocketPhosphorTrail phosphor;juce::Image emission(juce::Image::ARGB,100,8,true,juce::SoftwareImageType());
  emission.setPixelAt(60,4,juce::Colours::white);phosphor.apply(emission,1.,1.);
  emission.clear(emission.getBounds());phosphor.apply(emission,1.1,1.);

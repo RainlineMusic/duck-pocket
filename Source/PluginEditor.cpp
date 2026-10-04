@@ -490,10 +490,14 @@ void DuckPocketAudioProcessorEditor::captureBlurSnapshot(){
     bypassMix=old;capturingBlur=false;
     if(!source.isValid()||source.getWidth()<8||source.getHeight()<8)return;
     const int w=juce::jmax(16,source.getWidth()/6),h=juce::jmax(16,source.getHeight()/6);
-    juce::Image small(juce::Image::ARGB,w,h,true);
+    juce::Image small(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());
     {juce::Graphics sg(small);sg.setImageResamplingQuality(juce::Graphics::highResamplingQuality);sg.drawImage(source,juce::Rectangle<float>(0,0,float(w),float(h)),juce::RectanglePlacement::stretchToFit);}
-    juce::Image soft(juce::Image::ARGB,w,h,true);
-    juce::ImageConvolutionKernel kernel(9);kernel.createGaussianBlur(2.2f);kernel.applyToImage(soft,small,small.getBounds());
+    // JUCE 8.0.4 convolution forms out-of-image edge pointers before checking
+    // bounds (UBSan on macOS). Reuse the clamped, premultiplied separable blur.
+    juce::Image horizontal(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());
+    juce::Image soft(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());
+    PocketSoftwareGlow::blur(small,horizontal,true,2);
+    PocketSoftwareGlow::blur(horizontal,soft,false,2);
     blurredSnapshot=soft;
 }
 void DuckPocketAudioProcessorEditor::paintOverChildren(juce::Graphics& g){
