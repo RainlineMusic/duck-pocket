@@ -1,3 +1,15 @@
+# Photoshop target layout and deeper materials — current
+
+Reference pair: 1894×2048; intentional deltas are scaled isotropically by 800/1894 into the existing 800-unit design space. Influence/Duration move up 22 reference px (9.293 units); Output/M/S down 49 px (20.697 units); logo moves +19/+3 px (+8.026/+1.267 units). Sizes and X axes stay unchanged. Rainline was already absent. Freeze visual target is reference (1830,1693,48,48), with a transparent 32-unit hit box around the 20.275-unit glyph. Settings and power positions remain intact. Graph geometry and parameter behaviour are unchanged.
+
+Arrow height 24→36 makes its glyph 1.5× larger, y745→753 moves it lower; cached-state glow passes do not animate at idle. Expanded design height 905, collapsed 792; width default 615/min400. Lower titles/sliders move down 20 more units to accommodate the arrow. The new filtersExpanded.v2 preference defaults false for first launch/upgrade; subsequent explicit choices persist. Previous filter preference does not force the new default open.
+
+Dark materials: chassis #151D25, raised #263341, glass #14191F; ink #D9E3EE, secondary #ADB9C7; KEY #CCB078, OUT/GR #A9CBEE. SVG-derived dial bodies receive a cached cool/deep material grade. Ring bloom uses 14/5-unit broad/tight passes, stronger 4.6/4.2-unit cores. Live graph bloom remains signal driven, capped at 1.0, strongest at NOW with the old-data fade retained. Three themes remain; font is embedded Inter.
+
+Panel folding changes only window height and lower visibility. A fixed expanded-height chrome image is clipped, never stretched to the current collapsed height. No transient width resize; no top-material rebuild on fold at fixed width/DPI. GPU composition reads the drawable viewport JUCE installs for each callback rather than a stale snapshot height. UI tests check unchanged width/cache and identical paused top pixels (excluding the moving resize grip) at 400/615/1500, plus live viewport updates through paused GPU folds.
+
+Earlier sections below document previous revisions and are superseded by this one.
+
 # Compact / luminous refinement
 
 Latest user revision supersedes earlier fixed-open/4-theme rules. Dark default, Neon/Amber retained, White removed and migrated to Dark. OpenGL compiled by default; macOS runtime ON for fresh native editors, Windows runtime OFF for the reproduced WGL fault. Percentage Duration is already the processor default; old saved states remain intact.

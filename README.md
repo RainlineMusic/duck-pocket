@@ -7,7 +7,7 @@ JUCE 8.0.4 sidechain VST3 / AAX by Rainline Music.
 - Display-synchronised UI: 60 fps for short windows, 30 fps for 2–5 s windows.
 - High-resolution 2.4 kHz graph capture and 16k history; 2 ms extrema rollups and bounded paths for long windows.
 - Perspective tunnel graph grid in every theme.
-- New warm Amber theme alongside Neon, Solid Dark and Solid White.
+- Three active themes: Solid Dark (default), Neon and Amber; old White preferences use Dark.
 - Click-free 2.5 ms latency-aligned bypass crossfade.
 - Duration automation follows an active envelope with smoothing.
 - Both audio channels are represented in the oscilloscope.
@@ -36,7 +36,7 @@ This is experimental software. Back up old projects and plug-ins before replacem
 
 ## Graphics
 
-Four semantic themes, embedded Inter Regular/Medium (OFL license in `Assets/Fonts/Inter-OFL.txt`), cached physical-scale materials and dial bodies. Key/filter use one data colour; output/reduction use the second. Duration and M/S are neutral. Freeze remains available. Chrome is rebuilt only on theme, size/DPI or graph-window changes, with resize coalescing. No idle ambient animations.
+Three semantic themes, embedded Inter Regular/Medium (OFL license in `Assets/Fonts/Inter-OFL.txt`), cached physical-scale materials and dial bodies. Key/filter use one data colour; output/reduction use the second. Duration and M/S are neutral. Freeze remains available. Chrome is rebuilt only on theme, size/DPI or graph-window changes, with resize coalescing. No idle ambient animations.
 
 Optional OpenGL on macOS: configure with `-DDUCK_ENABLE_OPENGL=ON`, then Settings → OpenGL (experimental). A single editor context renders a half-resolution emissive layer with separable blur and additive composition. Continuous repainting is disabled, static GPU textures are retained, and creation/shader failure returns to the native renderer. Context detach precedes child destruction. **Runtime default is off until Pro Tools/AAX profiling and host testing are complete.** OpenGL is deprecated on macOS ([Apple](https://developer.apple.com/documentation/appkit/nsopenglcontext)). Windows uses JUCE 8's native Direct2D renderer: the OpenGL setting is unavailable there because a hosted WGL peer crashed intermittently before the renderer could apply its fallback. Enabling GL on macOS is not a verified performance improvement.
 
@@ -48,14 +48,20 @@ For Debug instrumentation use `-DDUCK_SANITIZER=address`, `undefined`, or `threa
 
 ### Designer interface
 
-The supplied SVG is the source for the Dark theme dial material, curved outline headings and logo. Controls and traces are live JUCE components, not a screenshot overlay. The 800 × 865 layout scales with window width; previous widths are retained within 800–1500, while previous height/expanded-panel state is ignored. M/S is now a rotary control: centre **0% / MS**, left **0–100% / MID**, right **0–100% / SIDE**. The existing `msBalance` parameter remains −1…+1; double-click resets to zero. Settings, power/bypass, graph freeze, range-handle reset, themes and graph windows are preserved.
+The supplied SVG is the source for the Dark theme dial material, curved outline headings and logo. Controls and traces are live JUCE components, not a screenshot overlay. The current 800 × 905 expanded / 800 × 792 collapsed layout scales with window width; previous widths are retained within 400–1500, while previous height/expanded-panel state is ignored. M/S is now a rotary control: centre **0% / MS**, left **0–100% / MID**, right **0–100% / SIDE**. The existing `msBalance` parameter remains −1…+1; double-click resets to zero. Settings, power/bypass, graph freeze, range-handle reset, themes and graph windows are preserved.
 
-Ring bloom is cached by value, theme, size and physical scale and works with native rendering, including Windows. Experimental OpenGL is optional on macOS, off by default; Windows uses the native renderer. This visual update does not modify DSP or parameter state.
+Ring bloom is cached by value, theme, size and physical scale and works with native rendering, including Windows. Experimental OpenGL is optional on macOS, on by default with fallback; Windows uses the native renderer. This visual update does not modify DSP or parameter state.
 
 ### Compact luminous interface update
 
-Active themes: Solid Dark (default), Neon and Amber. The removed White preference migrates to Dark. Fresh windows default to width 615 (approximately 1/1.3 of the designer base), with a 400 minimum (half the old 800); height follows the same proportions. Open filters use aspect 800:885, collapsed aspect 800:772. The restored arrow hides both Sidechain Filter and Processing Range, preserving width and parameter values. Previously saved session widths within bounds remain valid.
+Active themes: Solid Dark (default), Neon and Amber. The removed White preference migrates to Dark. Fresh windows default to width 615 (approximately 1/1.3 of the designer base), with a 400 minimum (half the old 800); height follows the same proportions. Open filters use aspect 800:905, collapsed aspect 800:792. The new UI preference defaults the filters closed. The restored arrow hides both Sidechain Filter and Processing Range, preserving width and parameter values. Previously saved session widths within bounds remain valid.
 
 OpenGL is compiled by default and enabled by default for macOS native editors. Runtime choice/failure rollback is saved under a new preference key; an explicit OFF remains OFF. Windows runtime GL stays disabled because of the previously reproduced WGL native-peer crash; brighter cached glow is also available through native rendering. Fresh processors already default to Percentage Duration at 100% = AUTO. Old ms-mode session states retain their saved mode.
 
 Graph beds use cached dark recesses and inner bevels. Curve cores and additive bloom are brighter toward NOW and fade toward older data. Output values rounding to zero show 0.00, never -0.00. Freeze/resume cut-offs are discarded on host reset, and GPU publications request their own presentation so paused theme changes do not wait for audio.
+
+### Photoshop layout refinement
+
+The supplied 1894×2048 comparison defines the layout offsets: side dials up 22 reference pixels; centre dials down 49; logo right/down 19/3. Freeze moves to the bottom-right of the oscilloscope. Existing control sizes, graph geometry and parameter semantics are preserved. The chevron is 1.5× larger with static glow, sits lower, and has more footer room. New default size is 615×609 closed / 615×696 open; minimum width is still 400. First launch/upgrade defaults closed; explicit subsequent choices persist. Dark has cooler, deeper materials and stronger live/cached bloom.
+
+Height-only panel toggles reuse the chrome cache and preserve width. The stale-image stretching and intermediate constrained resize are eliminated; GL uses the live drawable viewport during the transition. Regression screenshots compare stable paused top pixels through repeated folds at minimum/default/maximum width. DSP and processor sources are unchanged by this update.

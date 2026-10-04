@@ -11,7 +11,7 @@ struct PocketTokens {
 
         case PocketTheme::Amber:return {C(0xff211c17),C(0xff302820),C(0xff171410),C(0xffeee4d8),C(0xffbdb0a1),C(0xff514538),C(0xff514739),C(0xff342d25),C(0xffcfa96d),C(0xffe78555),C(0xffbeb2a4),C(0xffc6ad78)};
         case PocketTheme::SolidWhite: // migrate removed theme to Dark
-        case PocketTheme::SolidDark:default:return {C(0xff20242c),C(0xff292f39),C(0xff1c1f24),C(0xffced6e2),C(0xffa4aab3),C(0xff41474f),C(0xff45484c),C(0xff30343a),C(0xffd1ba8e),C(0xffc1d3f0),C(0xffeef3fa),C(0xffced6e2)};
+        case PocketTheme::SolidDark:default:return {C(0xff151d25),C(0xff263341),C(0xff14191f),C(0xffd9e3ee),C(0xffadb9c7),C(0xff3e4c5b),C(0xff46515b),C(0xff293642),C(0xffccb078),C(0xffa9cbee),C(0xffeef5ff),C(0xffc1d2e3)};
         }
     }
 };

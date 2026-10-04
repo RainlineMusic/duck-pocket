@@ -47,14 +47,14 @@ static void pump(int milliseconds){juce::MessageManager::getInstance()->runDispa
 int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=="--gl-smoke";if(glSmoke)std::cerr<<"GL_PROBE_START\n";juce::ScopedJuceInitialiser_GUI init;if(glSmoke)std::cerr<<"GL_PROBE_GUI_READY\n";const juce::File output(glSmoke?juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("duck-gl-smoke"):juce::File(argc>1?argv[1]:"screenshots"));if(!glSmoke)output.createDirectory();
  DuckPocketAudioProcessor p;p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
  if(glSmoke)std::cerr<<"GL_PROBE_PROCESSOR_READY\n";
- std::unique_ptr<DuckPocketAudioProcessorEditor> e(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));const bool native=argc>2&&juce::String(argv[2])=="--native";if(native){e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);}e->setSize(800,885);DuckUiTestAccess::settle(*e);
+ std::unique_ptr<DuckPocketAudioProcessorEditor> e(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));const bool native=argc>2&&juce::String(argv[2])=="--native";if(native){e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);}if(!glSmoke)check(!DuckUiTestAccess::rangesVisible(*e),"fresh filter panel defaults closed");DuckUiTestAccess::collapse(*e,true);e->setSize(800,905);DuckUiTestAccess::settle(*e);
  if(glSmoke)std::cerr<<"GL_PROBE_EDITOR_READY\n";
  if(glSmoke){
 #if DUCK_ENABLE_OPENGL
 #if JUCE_WINDOWS
   const double start=juce::Time::getMillisecondCounterHiRes();
   for(int cycle=0;cycle<100;++cycle){
-   if(cycle>0){e.reset(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));e->setSize(800,885);}
+   if(cycle>0){e.reset(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));e->setSize(800,905);}
    e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);
    check(e->getPeer()!=nullptr,"native Windows editor peer created");
    DuckUiTestAccess::gl(*e,true);
@@ -66,7 +66,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
 #else
   const double start=juce::Time::getMillisecondCounterHiRes();
   for(int cycle=0;cycle<100;++cycle){
-   if(cycle>0){e.reset(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));e->setSize(800,885);}
+   if(cycle>0){e.reset(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));e->setSize(800,905);}
    if(cycle==0)std::cerr<<"GL_PROBE_ATTACH_PEER\n";
    e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);
    if(cycle==0)std::cerr<<"GL_PROBE_PEER_READY\n";
@@ -117,14 +117,14 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  PocketLook dialLook;ModernDial durationDial(dialLook,"Duration","","ms",0,true);durationDial.setRange(5,2000,1);durationDial.setSkewFactor(.25);durationDial.setValue(1999,juce::dontSendNotification);check(!durationDial.isAutoValue(),"1999 ms remains finite");durationDial.setValue(2000,juce::dontSendNotification);check(durationDial.isAutoValue(),"2000 ms is AUTO");durationDial.setRange(1,100,1);durationDial.setValue(99,juce::dontSendNotification);check(!durationDial.isAutoValue(),"99 percent remains finite");durationDial.setValue(100,juce::dontSendNotification);check(durationDial.isAutoValue(),"100 percent is AUTO");
  ModernDial outputDial(dialLook,"Output","dB","dB",0,false,false,true);for(int size:{66,101,132,198}){outputDial.setSize(size,size);for(const char* value:{"-12.00","-0.01","0.00","6.00"}){const float height=outputDial.valueTextHeight(value);check(height>=6.f,"Output value stays readable");check(juce::GlyphArrangement::getStringWidth(pocketFont(height*132.f/float(size),true),value)*float(size)/132.f<=float(size)*60.f/132.f+.01f,"Output endpoints fit compact dial");}}
  outputDial.setRange(-12,6);outputDial.setValue(-.0000003,juce::dontSendNotification);check(outputDial.displayedValue()=="0.00","Output floating-point zero has no minus sign");outputDial.setValue(-.01,juce::dontSendNotification);check(outputDial.displayedValue()=="-0.01","negative Output remains negative");
- for(int width:{400,615,800,1500}){e->setSize(width,juce::roundToInt(width*885./800.));check(DuckUiTestAccess::layout(*e),"controls remain contained and separate during resize");}
- DuckUiTestAccess::collapse(*e,false);check(!DuckUiTestAccess::rangesVisible(*e)&&e->getHeight()<int(e->getWidth()*885./800.),"collapse hides both filters and shortens the window");
+ for(int width:{400,615,800,1500}){e->setSize(width,juce::roundToInt(width*905./800.));check(DuckUiTestAccess::layout(*e),"controls remain contained and separate during resize");}
+ DuckUiTestAccess::collapse(*e,false);check(!DuckUiTestAccess::rangesVisible(*e)&&e->getHeight()<int(e->getWidth()*905./800.),"collapse hides both filters and shortens the window");
  DuckUiTestAccess::collapse(*e,true);check(DuckUiTestAccess::rangesVisible(*e),"expand restores both filters");
  p.parameters.getParameter("bypass")->setValueNotifyingHost(1);DuckUiTestAccess::tick(*e);
  DuckUiTestAccess::collapse(*e,false);DuckUiTestAccess::settle(*e);DuckUiTestAccess::tick(*e);check(DuckUiTestAccess::bypassOverlay(*e),"collapse during bypass rebuilds the resized overlay");
  p.parameters.getParameter("bypass")->setValueNotifyingHost(0);DuckUiTestAccess::tick(*e);DuckUiTestAccess::collapse(*e,true);
  for(int width:{400,615,1500}){
-  DuckUiTestAccess::collapse(*e,true);e->setSize(width,juce::roundToInt(width*885./800.));DuckUiTestAccess::settle(*e);
+  DuckUiTestAccess::collapse(*e,true);e->setSize(width,juce::roundToInt(width*905./800.));DuckUiTestAccess::settle(*e);
   const auto before=e->createComponentSnapshot(e->getLocalBounds(),true,2.f);const auto cache=DuckUiTestAccess::caches(*e);
   const int topHeight=juce::roundToInt(744.f*float(width)/800.f*2.f);
   for(int fold=0;fold<4;++fold){DuckUiTestAccess::collapse(*e,(fold%2)!=0);
@@ -136,7 +136,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    for(int y=0;y<topHeight;++y)for(int x=0;x<a.width;++x)if(!grip.contains(x,y)&&a.getPixelColour(x,y)!=b.getPixelColour(x,y)){std::cerr<<"fold diff width="<<width<<" fold="<<fold<<" pixel="<<x<<","<<y<<" before="<<a.getPixelColour(x,y).toString()<<" after="<<b.getPixelColour(x,y).toString()<<" height="<<e->getHeight()<<"\n";check(false,"paused top/graph pixels stay identical through fold");}
   }
  }
- e->setSize(800,885);DuckUiTestAccess::settle(*e);
+ e->setSize(800,905);DuckUiTestAccess::settle(*e);
  DuckUiTestAccess::freeze(*e);pump(10);check(DuckUiTestAccess::frozen(*e),"freeze button freezes both graphs");
  DuckUiTestAccess::freeze(*e);pump(10);check(!DuckUiTestAccess::frozen(*e),"freeze button resumes both graphs");
  auto& balance= DuckUiTestAccess::balance(*e);
@@ -180,9 +180,12 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  if(native){e->removeFromDesktop();}
  DuckUiTestAccess::theme(*e,PocketTheme::SolidDark);
  for(int width:{400,615}){
-  e->setSize(width,juce::roundToInt(width*885./800.));DuckUiTestAccess::settle(*e);
+  e->setSize(width,juce::roundToInt(width*905./800.));DuckUiTestAccess::settle(*e);
   auto image=e->createComponentSnapshot(e->getLocalBounds(),true,2.f);
   auto stream=output.getChildFile("compact-"+juce::String(width)+"-2x.png").createOutputStream();check(stream&&juce::PNGImageFormat().writeImageToStream(image,*stream),"compact review capture");
+  stream.reset();DuckUiTestAccess::collapse(*e,false);auto closed=e->createComponentSnapshot(e->getLocalBounds(),true,2.f);
+  auto closedStream=output.getChildFile("collapsed-"+juce::String(width)+"-2x.png").createOutputStream();check(closedStream&&juce::PNGImageFormat().writeImageToStream(closed,*closedStream),"collapsed review capture");
+  DuckUiTestAccess::collapse(*e,true);
  }
  e.reset();std::cout<<"PASS real JUCE theme captures and chrome reuse\n";
 }

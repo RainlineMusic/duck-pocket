@@ -1,3 +1,7 @@
+# Photoshop layout / deeper colour refinement — current
+
+Applied reference deltas using 800/1894 without independently scaling X/Y. Larger glowing arrow, additional footer room, new closed-by-default UI preference. Freeze moved from header to the reference bottom-right scope location, with a larger transparent hit target. Dark palette/materials and glow intensity are updated; actual signal data, knob semantics, DSP and IDs are preserved. Local UI regression/captures passed; target Mac/Win and sanitizer verification follows on the final revision. Native GL regression now includes ten paused panel folds.
+
 # Fold jitter fix
 
 Height-only panel folding now clips a stable expanded-height chrome cache rather than stretching/rebuilding the entire editor image. Constraint limits are installed without constraining the old bounds, then one final resize preserves width (including the 400px minimum). Preference writes use PropertiesFile deferred saving. GPU plots use JUCE's live drawable viewport rather than the possibly old published frame height. UI regression compares every paused top pixel except the resize grip through repeated immediate folds at 400/615/1500px, requires unchanged width/cache count, and the native GL probe checks paused fold viewport updates. DSP/processor sources are unchanged.
