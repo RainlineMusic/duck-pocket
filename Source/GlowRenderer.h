@@ -75,8 +75,8 @@ public:
                 const int w=plot.emission.getWidth(),h=plot.emission.getHeight();
                 if(r.horizontal.getWidth()!=w||r.horizontal.getHeight()!=h){
                     if(!r.horizontal.initialise(context,w,h)||!r.vertical.initialise(context,w,h)){failed.store(true);ready.store(false);return;}}
-                r.horizontal.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.mask.getTextureID(),(1.f+plot.intensity*6.f)/float(w),0,1);
-                r.vertical.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.horizontal.getTextureID(),0,(1.f+plot.intensity*6.f)/float(h),1);
+                r.horizontal.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.mask.getTextureID(),4.f/float(w),0,1);
+                r.vertical.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.horizontal.getTextureID(),0,4.f/float(h),1);
                 blurredFrames.fetch_add(1,std::memory_order_relaxed);
             }
             context.extensions.glBindFramebuffer(GL_FRAMEBUFFER,defaultTarget);

@@ -310,7 +310,8 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
     // which advances in audio-block sized steps and made the whole graph stutter.
     const double now=(frozen||displayTime<=0.)?at(count-1).time:displayTime;
     const auto label=look.tokens().out;
-    auto emit=[&](const juce::Path& path,juce::Colour colour,float width){
+    auto emit=[&](const juce::Path& path,juce::Colour colour,float width,float strength=1.f){
+        colour=colour.withMultipliedAlpha(strength);
         if(emissionGraphics){emissionGraphics->setGradientFill(juce::ColourGradient(colour.withAlpha(.04f),plot.getX(),0,colour,plot.getRight(),0,false));emissionGraphics->strokePath(path,juce::PathStrokeType(width,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
     };
     juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(plot.toNearestInt());
@@ -369,7 +370,7 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
             g.setGradientFill(juce::ColourGradient(label.withAlpha(.10f),0,plot.getY(),label.withAlpha(.43f),0,plot.getBottom(),false));g.fillPath(fill);
             juce::Path path;if(longWindow){path.startNewSubPath(pathPoints.front());for(size_t i=1;i<pathPoints.size();++i)path.lineTo(pathPoints[i]);}else path=smoothPath(pathPoints);
             if(!emissionGraphics&&glow&&signalPeak>.004f&&!frozen)stroke(g,path,label.withAlpha(.10f),4.2f);
-            g.setGradientFill(juce::ColourGradient(label.brighter(.35f).withAlpha(.08f),plot.getX(),0,label.brighter(.35f),plot.getRight(),0,false));g.strokePath(path,juce::PathStrokeType(1.65f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));emit(path,label.brighter(.35f),5.f);
+            g.setGradientFill(juce::ColourGradient(label.brighter(.35f).withAlpha(.08f),plot.getX(),0,label.brighter(.35f),plot.getRight(),0,false));g.strokePath(path,juce::PathStrokeType(1.65f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));float depth=0;for(float value:bucketLo)if(value<=1.f)depth=juce::jmax(depth,1.f-value);emit(path,label.brighter(.35f),5.f,juce::jlimit(0.f,1.f,depth));
         }
         return;
     }
@@ -411,7 +412,7 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
             body.lineTo(pathBottom.front());body.closeSubPath();
             if(!emissionGraphics&&glow&&!longWindow&&!frozen){g.setColour(colour.withAlpha(.12f));g.strokePath(body,juce::PathStrokeType(3.5f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
             // No outline: the wave itself is filled with the colour the outline used to have.
-            g.setGradientFill(juce::ColourGradient(colour.withAlpha(.035f),plot.getX(),0,colour.brighter(.18f).withAlpha(.65f),plot.getRight(),0,false));g.fillPath(body);g.setGradientFill(juce::ColourGradient(colour.withAlpha(.07f),plot.getX(),0,colour.brighter(.35f),plot.getRight(),0,false));g.strokePath(body,juce::PathStrokeType(1.1f));emit(body,colour.brighter(.35f),4.f);
+            g.setGradientFill(juce::ColourGradient(colour.withAlpha(.035f),plot.getX(),0,colour.brighter(.18f).withAlpha(.65f),plot.getRight(),0,false));g.fillPath(body);g.setGradientFill(juce::ColourGradient(colour.withAlpha(.07f),plot.getX(),0,colour.brighter(.35f),plot.getRight(),0,false));g.strokePath(body,juce::PathStrokeType(1.1f));float strength=0;for(int column=juce::jmax(0,juce::roundToInt((x0-plot.getX())/span));column<columns&&xOf(column)<=x1;++column)if(bucketHi[size_t(column)]>=bucketLo[size_t(column)])strength=juce::jmax(strength,std::abs(bucketLo[size_t(column)]),std::abs(bucketHi[size_t(column)]));emit(body,colour.brighter(.35f),4.f,juce::jlimit(0.f,1.f,strength));
         }
     }
 }
@@ -493,7 +494,7 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
             const float raster=g.getInternalContext().getPhysicalPixelScaleFactor()*.5f;
             layer.emission=juce::Image(juce::Image::ARGB,juce::jmax(1,juce::roundToInt(plot.getWidth()*raster)),juce::jmax(1,juce::roundToInt(plot.getHeight()*raster)),true,juce::SoftwareImageType());
             juce::Graphics eg(layer.emission);eg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(raster));emissionGraphics=&eg;graph(g,{32,y,752,160},i==0);emissionGraphics=nullptr;
-            layer.intensity=(gainFrozen||scopeFrozen)?0.f:juce::jlimit(0.f,1.f,signalPeak*.90f+currentReduction*.28f);
+            layer.intensity=(gainFrozen||scopeFrozen)?0.f:1.f;
             if(i==1){if(scopeFrozen)gpuPhosphor[size_t(i)].reset();else gpuPhosphor[size_t(i)].apply(layer.emission,displayTime,scopeWindow);}
         }
         lastGpuFrame=frame;glowRenderer->publish(std::move(frame));
@@ -505,7 +506,7 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
         juce::Graphics cg(layer.core);cg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(device));
         juce::Graphics eg(layer.emission);const float raster=float(layer.emission.getWidth())/plot.getWidth();eg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(raster));emissionGraphics=&eg;graph(cg,{32,y,752,160},i==0);emissionGraphics=nullptr;
         const float chromeDevice=float(chrome.getWidth())/float(getWidth());auto crop=(scaled(50,y+27,700,107).toFloat()*chromeDevice).toNearestInt().getIntersection(chrome.getBounds());
-        const float intensity=(gainFrozen||scopeFrozen)?0.f:juce::jlimit(0.f,1.f,signalPeak*.90f+currentReduction*.28f);
+        const float intensity=(gainFrozen||scopeFrozen)?0.f:1.f;
         layer.paint(g,chrome.getClippedImage(crop),plot,intensity,displayTime,i?scopeWindow:gainWindow,i==1);
     }}
     if(triggerStamp>=0&&!gainFrozen){const float flash=1.f-float((juce::Time::getMillisecondCounterHiRes()-triggerStamp)/180.);if(flash>0){g.setColour(look.tokens().out.withAlpha(flash*.45f));g.fillRect(748.f,423.f,2.f,107.f);}}
@@ -517,15 +518,15 @@ void DuckPocketAudioProcessorEditor::captureBlurSnapshot(){
     auto source=createComponentSnapshot(blurArea,true,1.f);
     bypassMix=old;capturingBlur=false;
     if(!source.isValid()||source.getWidth()<8||source.getHeight()<8)return;
-    const int w=juce::jmax(16,source.getWidth()/6),h=juce::jmax(16,source.getHeight()/6);
+    const int w=juce::jmax(16,source.getWidth()/2),h=juce::jmax(16,source.getHeight()/2);
     juce::Image small(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());
     {juce::Graphics sg(small);sg.setImageResamplingQuality(juce::Graphics::highResamplingQuality);sg.drawImage(source,juce::Rectangle<float>(0,0,float(w),float(h)),juce::RectanglePlacement::stretchToFit);}
     // JUCE 8.0.4 convolution forms out-of-image edge pointers before checking
     // bounds (UBSan on macOS). Reuse the clamped, premultiplied separable blur.
     juce::Image horizontal(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());
     juce::Image soft(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());
-    PocketSoftwareGlow::blur(small,horizontal,true,2);
-    PocketSoftwareGlow::blur(horizontal,soft,false,2);
+    const int radius=juce::jmax(1,juce::roundToInt(float(getWidth())/800.f*3.f));
+    for(int pass=0;pass<3;++pass){PocketSoftwareGlow::boxBlur(pass==0?small:soft,horizontal,true,radius);PocketSoftwareGlow::boxBlur(horizontal,soft,false,radius);}
     blurredSnapshot=soft;
 }
 void DuckPocketAudioProcessorEditor::paintOverChildren(juce::Graphics& g){

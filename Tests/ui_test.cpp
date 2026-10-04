@@ -13,7 +13,7 @@ struct DuckUiTestAccess {
  }
  static void freeze(DuckPocketAudioProcessorEditor& e){e.freezeButton.triggerClick();}
  static bool frozen(DuckPocketAudioProcessorEditor& e){return e.gainFrozen&&e.scopeFrozen;}
- static bool bypassOverlay(DuckPocketAudioProcessorEditor& e){return e.blurredSnapshot.isValid()&&e.blurArea.getBottom()<=e.getHeight();}
+ static bool bypassOverlay(DuckPocketAudioProcessorEditor& e){return e.blurredSnapshot.isValid()&&e.blurArea.getBottom()<=e.getHeight()&&e.blurredSnapshot.getWidth()>=e.blurArea.getWidth()/2;}
  static void collapse(DuckPocketAudioProcessorEditor& e,bool open){e.setFiltersExpanded(open,false);}
  static juce::Rectangle<int> resizeGrip(DuckPocketAudioProcessorEditor& e){for(auto* c:e.getChildren())if(dynamic_cast<juce::ResizableCornerComponent*>(c))return c->getBounds();return {};}
  static bool rangesVisible(DuckPocketAudioProcessorEditor& e){return e.sidechainRange.isVisible()&&e.processingRange.isVisible();}
@@ -112,6 +112,11 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  juce::Image edge(juce::Image::ARGB,1,1,true,juce::SoftwareImageType()),edgeBlur(juce::Image::ARGB,1,1,true,juce::SoftwareImageType());edge.setPixelAt(0,0,juce::Colours::white);
  PocketSoftwareGlow::blur(edge,edgeBlur,true,2);check(edgeBlur.getPixelAt(0,0)==juce::Colours::white,"single-pixel blur clamps edges safely");
  PocketSoftwareGlow::blur(edgeBlur,edge,false,2);check(edge.getPixelAt(0,0)==juce::Colours::white,"vertical blur also clamps edges safely");
+ juce::Image line(juce::Image::ARGB,65,1,true,juce::SoftwareImageType()),smooth(line.createCopy());
+ for(int x=0;x<65;++x)line.setPixelAt(x,0,juce::Colour(juce::uint8(x*3),juce::uint8(x*3),juce::uint8(x*3)));
+ PocketSoftwareGlow::boxBlur(line,smooth,true,6);
+ for(int x=7;x<58;++x)check(smooth.getPixelAt(x,0).getRed()-smooth.getPixelAt(x-1,0).getRed()==3,"bypass blur preserves a continuous gradient without a mosaic grid");
+ PocketSoftwareGlow::boxBlur(edge,edgeBlur,true,12);check(edgeBlur.getPixelAt(0,0)==juce::Colours::white,"box blur safely clamps a one-pixel image");
  PocketPhosphorTrail phosphor;juce::Image emission(juce::Image::ARGB,100,8,true,juce::SoftwareImageType());
  emission.setPixelAt(60,4,juce::Colours::white);phosphor.apply(emission,1.,1.);
  emission.clear(emission.getBounds());phosphor.apply(emission,1.1,1.);

@@ -44,7 +44,7 @@ public:
     void paint(juce::Graphics& g,const juce::Image& background,juce::Rectangle<float> bounds,float intensity,double time,double window,bool phosphor){
         if(intensity<=.0001f||!background.isValid()){g.drawImage(core,bounds);return;}
         if(phosphor)phosphorTrail.apply(emission,time,window);
-        const int step=intensity>.16f?2:1;blur(emission,horizontal,true,step);blur(horizontal,soft,false,step);
+        const int step=1;blur(emission,horizontal,true,step);blur(horizontal,soft,false,step);
         upscaled.clear(upscaled.getBounds());{juce::Graphics ug(upscaled);ug.setImageResamplingQuality(juce::Graphics::highResamplingQuality);ug.drawImage(soft,upscaled.getBounds().toFloat());}
         // Additive RGB over the cached glass; crisp cores are composited last.
         juce::Image::BitmapData base(background,juce::Image::BitmapData::readOnly),bloom(upscaled,juce::Image::BitmapData::readOnly),dest(composite,juce::Image::BitmapData::writeOnly);
@@ -55,6 +55,21 @@ public:
             d->setARGB(255,juce::uint8(juce::jmin(255,int(b.getRed())+juce::roundToInt(e->getRed()*intensity))),juce::uint8(juce::jmin(255,int(b.getGreen())+juce::roundToInt(e->getGreen()*intensity))),juce::uint8(juce::jmin(255,int(b.getBlue())+juce::roundToInt(e->getBlue()*intensity))));
         }
         g.drawImage(composite,bounds);g.drawImage(core,bounds);
+    }
+    // Contiguous sliding-window kernel: no skipped texels or sparse-grid artefacts.
+    // Three box passes approximate a Gaussian, with work independent of radius.
+    static void boxBlur(const juce::Image& input,juce::Image& output,bool horizontalPass,int radius){
+        juce::Image::BitmapData src(input,juce::Image::BitmapData::readOnly),dst(output,juce::Image::BitmapData::writeOnly);
+        const int length=horizontalPass?src.width:src.height,lines=horizontalPass?src.height:src.width;
+        radius=juce::jlimit(1,64,radius);const int count=2*radius+1;
+        for(int line=0;line<lines;++line){
+            auto pixel=[&](int at){at=juce::jlimit(0,length-1,at);return src.getPixelPointer(horizontalPass?at:line,horizontalPass?line:at);};
+            int sum[4]{};for(int k=-radius;k<=radius;++k){const auto* v=pixel(k);for(int c=0;c<4;++c)sum[c]+=v[c];}
+            for(int at=0;at<length;++at){auto* d=dst.getPixelPointer(horizontalPass?at:line,horizontalPass?line:at);
+                for(int c=0;c<4;++c)d[c]=juce::uint8((sum[c]+count/2)/count);
+                const auto* a=pixel(at-radius);const auto* b=pixel(at+radius+1);for(int c=0;c<4;++c)sum[c]+=int(b[c])-int(a[c]);
+            }
+        }
     }
     static void blur(const juce::Image& input,juce::Image& output,bool horizontalPass,int step=1){
         constexpr int weights[]{1,6,15,20,15,6,1};
