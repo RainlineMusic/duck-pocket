@@ -12,6 +12,7 @@ public:
     juce::OpenGLContext context;
     std::atomic<bool> ready{false},failed{false},presented{false};
     std::atomic<std::uint64_t> frames{0},blurredFrames{0},presentedRevision{0};
+    std::atomic<int> presentedLogicalHeight{0};
     PocketGlowRenderer(){context.setRenderer(this);context.setContinuousRepainting(false);context.setComponentPaintingEnabled(true);context.setOpenGLVersionRequired(juce::OpenGLContext::openGL3_2);}
     ~PocketGlowRenderer() override {stop();}
     void attach(juce::Component& target){failed.store(false);context.attachTo(target);}
@@ -59,7 +60,12 @@ public:
         std::shared_ptr<const Frame> frame;{std::lock_guard<std::mutex> guard(exchange);frame=pending;}
         if(!frame)return;
         frames.fetch_add(1,std::memory_order_relaxed);const auto defaultTarget=juce::OpenGLFrameBuffer::getCurrentFrameBufferTarget();
-        const float scale=float(context.getRenderingScale());const int vw=juce::jmax(1,juce::roundToInt(frame->width*scale)),vh=juce::jmax(1,juce::roundToInt(frame->height*scale));
+        // JUCE installs the current drawable viewport before this callback. A
+        // pending frame may still have the pre-fold height; use the live GL
+        // viewport so the old graph snapshot stays anchored at the top.
+        GLint viewport[4]{};glGetIntegerv(GL_VIEWPORT,viewport);
+        const int vw=juce::jmax(1,int(viewport[2])),vh=juce::jmax(1,int(viewport[3]));
+        const float scale=float(context.getRenderingScale());const float plotScale=float(vw)/float(frame->width);
         glViewport(0,0,vw,vh);juce::OpenGLHelpers::clear(juce::Colours::transparentBlack);glDisable(GL_DEPTH_TEST);glDisable(GL_BLEND);
         context.extensions.glBindVertexArray(vertexArray);
         for(size_t i=0;i<resources.size();++i){auto& r=resources[i];const auto& plot=frame->plots[i];if(!plot.background.isValid())continue;
@@ -74,11 +80,11 @@ public:
                 blurredFrames.fetch_add(1,std::memory_order_relaxed);
             }
             context.extensions.glBindFramebuffer(GL_FRAMEBUFFER,defaultTarget);
-            const auto bounds=plot.bounds.toFloat()*scale;glViewport(juce::roundToInt(bounds.getX()),vh-juce::roundToInt(bounds.getBottom()),juce::roundToInt(bounds.getWidth()),juce::roundToInt(bounds.getHeight()));
+            const auto bounds=plot.bounds.toFloat()*plotScale;glViewport(juce::roundToInt(bounds.getX()),vh-juce::roundToInt(bounds.getBottom()),juce::roundToInt(bounds.getWidth()),juce::roundToInt(bounds.getHeight()));
             glDisable(GL_BLEND);draw(*copyProgram,r.base.getTextureID(),0,0,1);
             if(plot.intensity>.001f&&plot.emission.isValid()){glEnable(GL_BLEND);glBlendFunc(GL_ONE,GL_ONE);draw(*copyProgram,r.vertical.getTextureID(),0,0,plot.intensity);glDisable(GL_BLEND);}
         }
-        presentedRevision.store(frame->chromeRevision);presented.store(true);lastFrame=frame;context.extensions.glBindFramebuffer(GL_FRAMEBUFFER,defaultTarget);glViewport(0,0,vw,vh);
+        presentedLogicalHeight.store(juce::roundToInt(float(vh)/scale));presentedRevision.store(frame->chromeRevision);presented.store(true);lastFrame=frame;context.extensions.glBindFramebuffer(GL_FRAMEBUFFER,defaultTarget);glViewport(0,0,vw,vh);
         context.extensions.glBindBuffer(GL_ARRAY_BUFFER,0);context.extensions.glBindVertexArray(0);
     }
 private:

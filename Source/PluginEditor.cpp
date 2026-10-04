@@ -250,14 +250,19 @@ void DuckPocketAudioProcessorEditor::resized(){
     sidechainRange.setVisible(filtersExpanded);processingRange.setVisible(filtersExpanded);
     sidechainRange.setBounds(scaled(65,795,670,28));processingRange.setBounds(scaled(65,842,670,28));
     blurArea=scaled(0,56,800,designHeight()-56).getIntersection(getLocalBounds());gainArea=scaled(32,396,752,160);scopeArea=scaled(32,583,752,160);
-    blurredSnapshot={};chromeValid=false;if(ready){audioProcessor.editorWidth.store(getWidth());resizeStamp=juce::Time::getMillisecondCounterHiRes();}
+    blurredSnapshot={};if(ready){audioProcessor.editorWidth.store(getWidth());resizeStamp=juce::Time::getMillisecondCounterHiRes();}
 }
 void DuckPocketAudioProcessorEditor::setFiltersExpanded(bool expanded,bool persist){
     if(filtersExpanded==expanded)return;
     filtersExpanded=expanded;expandButton.setToggleState(expanded,juce::dontSendNotification);
-    if(persist&&preferences){preferences->setValue("duckPocket.ui.filtersExpanded",expanded);preferences->saveIfNeeded();}
-    setResizeLimits(400,juce::roundToInt(designHeight()*.5f),1500,juce::roundToInt(designHeight()*1.875f));getConstrainer()->setFixedAspectRatio(800./designHeight());
-    setSize(getWidth(),juce::roundToInt(getWidth()*designHeight()/800.f));invalidateChrome();
+    if(persist&&preferences)preferences->setValue("duckPocket.ui.filtersExpanded",expanded);
+    // Do not constrain the old collapsed bounds against the new minimum height:
+    // setResizeLimits would transiently change the width before setSize (especially
+    // at 400px), rebuilding both dials/plots. Install limits, then resize once.
+    const int width=getWidth();auto* limits=getConstrainer();
+    limits->setSizeLimits(400,juce::roundToInt(designHeight()*.5f),1500,juce::roundToInt(designHeight()*1.875f));
+    limits->setFixedAspectRatio(800./designHeight());
+    setSize(width,juce::roundToInt(width*designHeight()/800.f));repaint();
 }
 void DuckPocketAudioProcessorEditor::panel(juce::Graphics& g,juce::Rectangle<float> r){
     const auto t=look.tokens();juce::Path shadow;shadow.addRoundedRectangle(r,10);juce::DropShadow(juce::Colours::black.withAlpha(.20f),5,{0,2}).drawForPath(g,shadow);
@@ -394,11 +399,11 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
 }
 void DuckPocketAudioProcessorEditor::paintChrome(juce::Graphics& g){
     const float physicalScale=juce::jlimit(.75f,4.f,g.getInternalContext().getPhysicalPixelScaleFactor());
-    const int w=juce::jmax(1,juce::roundToInt(getWidth()*physicalScale)),h=juce::jmax(1,juce::roundToInt(getHeight()*physicalScale));
+    const int w=juce::jmax(1,juce::roundToInt(getWidth()*physicalScale)),h=juce::jmax(1,juce::roundToInt(expandedDesignHeight*float(getWidth())/800.f*physicalScale));
     const bool resizing=resizeStamp>0&&juce::Time::getMillisecondCounterHiRes()-resizeStamp<100;
     if((!chromeValid||!chrome.isValid()||chrome.getWidth()!=w||chrome.getHeight()!=h||std::abs(chromeScale-physicalScale)>.001f)&&(!resizing||!chrome.isValid())){
         ++chromeBuildCount;chrome=juce::Image(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());chromeScale=physicalScale;juce::Graphics cg(chrome);cg.addTransform(juce::AffineTransform::scale(physicalScale*float(getWidth())/800.f));const auto t=look.tokens();
-        cg.setGradientFill(juce::ColourGradient(t.chassis,400,240,t.chassis.darker(.2f),0,designHeight(),true));cg.fillRect(0.f,0.f,800.f,designHeight());
+        cg.setGradientFill(juce::ColourGradient(t.chassis,400,240,t.chassis.darker(.2f),0,expandedDesignHeight,true));cg.fillRect(0.f,0.f,800.f,expandedDesignHeight);
         juce::Random noise(0xD0C);for(int i=0;i<6500;++i){cg.setColour((i%2?juce::Colours::white:juce::Colours::black).withAlpha(.012f));cg.fillRect(float(noise.nextInt(800)),float(noise.nextInt(865)),1.f,1.f);}
         auto logo=juce::Drawable::createFromImageData(BinaryData::Logo_svg,BinaryData::Logo_svgSize);
         if(logo){logo->replaceColour(juce::Colour(0xffced6e2),t.brand);logo->drawAt(cg,3,4,1.f);}
@@ -440,7 +445,9 @@ void DuckPocketAudioProcessorEditor::paintChrome(juce::Graphics& g){
         g.excludeClipRegion(scaled(50,423,700,107));g.excludeClipRegion(scaled(50,610,700,107));
     }
 #endif
-    g.drawImage(chrome,getLocalBounds().toFloat(),juce::RectanglePlacement::stretchToFit);
+    // Keep one expanded-height chrome cache. Folding clips the bottom; it never
+    // stretches the graph bed or regenerates top materials at the same width/DPI.
+    g.drawImage(chrome,{0,0,float(getWidth()),expandedDesignHeight*float(getWidth())/800.f},juce::RectanglePlacement::stretchToFit);
 }
 
 void DuckPocketAudioProcessorEditor::paintDynamicLabels(juce::Graphics& g){

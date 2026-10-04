@@ -1,3 +1,7 @@
+# Fold jitter fix
+
+Height-only panel folding now clips a stable expanded-height chrome cache rather than stretching/rebuilding the entire editor image. Constraint limits are installed without constraining the old bounds, then one final resize preserves width (including the 400px minimum). Preference writes use PropertiesFile deferred saving. GPU plots use JUCE's live drawable viewport rather than the possibly old published frame height. UI regression compares every paused top pixel except the resize grip through repeated immediate folds at 400/615/1500px, requires unchanged width/cache count, and the native GL probe checks paused fold viewport updates. DSP/processor sources are unchanged.
+
 # Bypass blur sanitizer fix
 
 macOS ASan/UBSan run 37231553281 caught undefined edge-pointer arithmetic in JUCE 8.0.4 ImageConvolutionKernel during bypass capture. The call is replaced by the shared, clamped, premultiplied separable blur; sanitizer settings are unchanged. Bypass-collapse regression and a 1×1 edge case exercise the replacement. DSP/processor sources are unaffected. The final CI revision supersedes the failed intermediate one.

@@ -15,6 +15,7 @@ struct DuckUiTestAccess {
  static bool frozen(DuckPocketAudioProcessorEditor& e){return e.gainFrozen&&e.scopeFrozen;}
  static bool bypassOverlay(DuckPocketAudioProcessorEditor& e){return e.blurredSnapshot.isValid()&&e.blurArea.getBottom()<=e.getHeight();}
  static void collapse(DuckPocketAudioProcessorEditor& e,bool open){e.setFiltersExpanded(open,false);}
+ static juce::Rectangle<int> resizeGrip(DuckPocketAudioProcessorEditor& e){for(auto* c:e.getChildren())if(dynamic_cast<juce::ResizableCornerComponent*>(c))return c->getBounds();return {};}
  static bool rangesVisible(DuckPocketAudioProcessorEditor& e){return e.sidechainRange.isVisible()&&e.processingRange.isVisible();}
  static bool scopeHasSignal(DuckPocketAudioProcessorEditor& e){
   const auto& core=e.softwarePlots[1].core;if(!core.isValid())return false;
@@ -33,6 +34,7 @@ struct DuckUiTestAccess {
  static bool ready(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->ready.load();}
  static bool failed(DuckPocketAudioProcessorEditor& e){return !e.glowRenderer||e.glowRenderer->failed.load();}
  static bool fellBack(DuckPocketAudioProcessorEditor& e){return !e.glowRenderer&&e.isOpaque();}
+ static int gpuHeight(DuckPocketAudioProcessorEditor& e){return e.glowRenderer?e.glowRenderer->presentedLogicalHeight.load():0;}
  static std::uint64_t gpuRevision(DuckPocketAudioProcessorEditor& e){return e.glowRenderer?e.glowRenderer->presentedRevision.load():0;}
  static bool themePresented(DuckPocketAudioProcessorEditor& e,std::uint64_t previous){return gpuRevision(e)>previous;}
  static bool rendered(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->presented.load()&&e.glowRenderer->frames.load()>0;}
@@ -90,6 +92,9 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    check(DuckUiTestAccess::rendered(*e),"native GPU composed a graph frame");
    if(cycle==0)check(DuckUiTestAccess::blurredFrames(*e)>0,"native GPU blur rendered a live signal");
    if(cycle==0){const auto previous=DuckUiTestAccess::gpuRevision(*e);DuckUiTestAccess::theme(*e,PocketTheme::Amber);for(int poll=0;poll<75&&!DuckUiTestAccess::themePresented(*e,previous);++poll)pump(20);check(DuckUiTestAccess::themePresented(*e,previous),"paused GPU presents the new theme without audio");}
+   if(cycle==0){for(int fold=0;fold<10;++fold){const int width=e->getWidth();DuckUiTestAccess::collapse(*e,(fold%2)==0);
+    for(int poll=0;poll<75&&DuckUiTestAccess::gpuHeight(*e)!=e->getHeight();++poll){DuckUiTestAccess::trigger(*e);pump(20);}
+    check(e->getWidth()==width,"native fold preserves width");check(DuckUiTestAccess::gpuHeight(*e)==e->getHeight(),"native GPU uses live drawable height after paused fold");}}
    DuckUiTestAccess::gl(*e,false);e->removeFromDesktop();e.reset();
   }
   std::cout<<"PASS native OpenGL glow and 100 editor peer lifecycles, total_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';
@@ -118,6 +123,19 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  p.parameters.getParameter("bypass")->setValueNotifyingHost(1);DuckUiTestAccess::tick(*e);
  DuckUiTestAccess::collapse(*e,false);DuckUiTestAccess::settle(*e);DuckUiTestAccess::tick(*e);check(DuckUiTestAccess::bypassOverlay(*e),"collapse during bypass rebuilds the resized overlay");
  p.parameters.getParameter("bypass")->setValueNotifyingHost(0);DuckUiTestAccess::tick(*e);DuckUiTestAccess::collapse(*e,true);
+ for(int width:{400,615,1500}){
+  DuckUiTestAccess::collapse(*e,true);e->setSize(width,juce::roundToInt(width*885./800.));DuckUiTestAccess::settle(*e);
+  const auto before=e->createComponentSnapshot(e->getLocalBounds(),true,2.f);const auto cache=DuckUiTestAccess::caches(*e);
+  const int topHeight=juce::roundToInt(744.f*float(width)/800.f*2.f);
+  for(int fold=0;fold<4;++fold){DuckUiTestAccess::collapse(*e,(fold%2)!=0);
+   const auto after=e->createComponentSnapshot(e->getLocalBounds(),true,2.f);
+   check(e->getWidth()==width,"fold never changes width at the minimum or maximum size");
+   check(DuckUiTestAccess::caches(*e)==cache,"fold reuses chrome immediately, without settling or regeneration");
+   juce::Image::BitmapData a(before,juce::Image::BitmapData::readOnly),b(after,juce::Image::BitmapData::readOnly);
+   const auto grip=(DuckUiTestAccess::resizeGrip(*e).toFloat()*2.f).toNearestInt();
+   for(int y=0;y<topHeight;++y)for(int x=0;x<a.width;++x)if(!grip.contains(x,y)&&a.getPixelColour(x,y)!=b.getPixelColour(x,y)){std::cerr<<"fold diff width="<<width<<" fold="<<fold<<" pixel="<<x<<","<<y<<" before="<<a.getPixelColour(x,y).toString()<<" after="<<b.getPixelColour(x,y).toString()<<" height="<<e->getHeight()<<"\n";check(false,"paused top/graph pixels stay identical through fold");}
+  }
+ }
  e->setSize(800,885);DuckUiTestAccess::settle(*e);
  DuckUiTestAccess::freeze(*e);pump(10);check(DuckUiTestAccess::frozen(*e),"freeze button freezes both graphs");
  DuckUiTestAccess::freeze(*e);pump(10);check(!DuckUiTestAccess::frozen(*e),"freeze button resumes both graphs");

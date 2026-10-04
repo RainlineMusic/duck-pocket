@@ -145,7 +145,8 @@ private:
     long long summaryBin=-1;
     std::vector<PocketTrace> frozenGain,frozenSummary;
     bool gainFrozen=false,scopeFrozen=false,filtersExpanded=true;
-    float designHeight() const{return filtersExpanded?885.f:772.f;}
+    static constexpr float expandedDesignHeight=885.f;
+    float designHeight() const{return filtersExpanded?expandedDesignHeight:772.f;}
     void setFiltersExpanded(bool expanded,bool persist=true);
     double gainResume=0,scopeResume=0;
     bool ready=false,rangeGesture=false,processRangeGesture=false,capturingBlur=false,bypassTarget=false;
