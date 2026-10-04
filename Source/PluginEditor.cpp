@@ -396,18 +396,22 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
 
 #if DUCK_ENABLE_OPENGL
     if(glowRenderer&&glowRenderer->ready.load()&&!capturingBlur&&bypassMix<.5f){
+        if(g.clipRegionIntersects({42,135,570,137})||g.clipRegionIntersects({42,375,570,137})){
         auto frame=std::make_shared<PocketGlowRenderer::Frame>();frame->width=getWidth();frame->height=getHeight();frame->chromeRevision=chromeBuildCount;
-        for(int i=0;i<2;++i){const float y=i?328.f:88.f;const juce::Rectangle<float> plot(42,y+47,570,137);auto& layer=frame->plots[size_t(i)];layer.bounds=scaled(42,y+47,570,137);
+        for(int i=0;i<2;++i){const float y=i?328.f:88.f;const juce::Rectangle<float> plot(42,y+47,570,137);auto& layer=frame->plots[size_t(i)];
+            if(!g.clipRegionIntersects(plot.toNearestInt())&&lastGpuFrame&&lastGpuFrame->chromeRevision==frame->chromeRevision){layer=lastGpuFrame->plots[size_t(i)];continue;}
+            layer.bounds=scaled(42,y+47,570,137);
             const float device=float(chrome.getWidth())/float(getWidth());auto crop=(layer.bounds.toFloat()*device).toNearestInt().getIntersection(chrome.getBounds());layer.background=chrome.getClippedImage(crop);
             const float raster=g.getInternalContext().getPhysicalPixelScaleFactor()*.5f;
             layer.emission=juce::Image(juce::Image::ARGB,juce::jmax(1,juce::roundToInt(plot.getWidth()*raster)),juce::jmax(1,juce::roundToInt(plot.getHeight()*raster)),true,juce::SoftwareImageType());
             juce::Graphics eg(layer.emission);eg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(raster));emissionGraphics=&eg;graph(g,{24,y,640,224},i==0);emissionGraphics=nullptr;
             layer.intensity=(gainFrozen||scopeFrozen)?0.f:juce::jlimit(0.f,.32f,signalPeak*.25f+currentReduction*.07f);
         }
-        glowRenderer->publish(std::move(frame));
+        lastGpuFrame=frame;glowRenderer->publish(std::move(frame));
+        }
     }else
 #endif
-    {for(int i=0;i<2;++i){const float y=i?328.f:88.f;const juce::Rectangle<float> plot(42,y+47,570,137);auto& layer=softwarePlots[size_t(i)];
+    {for(int i=0;i<2;++i){const float y=i?328.f:88.f;const juce::Rectangle<float> plot(42,y+47,570,137);if(!g.clipRegionIntersects(plot.toNearestInt()))continue;auto& layer=softwarePlots[size_t(i)];
         const float device=g.getInternalContext().getPhysicalPixelScaleFactor();layer.prepare(juce::jmax(1,juce::roundToInt(plot.getWidth()*device)),juce::jmax(1,juce::roundToInt(plot.getHeight()*device)));
         juce::Graphics cg(layer.core);cg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(device));
         juce::Graphics eg(layer.emission);const float raster=float(layer.emission.getWidth())/plot.getWidth();eg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(raster));emissionGraphics=&eg;graph(cg,{24,y,640,224},i==0);emissionGraphics=nullptr;
@@ -416,7 +420,7 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
         layer.paint(g,chrome.getClippedImage(crop),plot,intensity,displayTime,i?scopeWindow:gainWindow,i==1);
     }}
     if(triggerStamp>=0&&!gainFrozen){const float flash=1.f-float((juce::Time::getMillisecondCounterHiRes()-triggerStamp)/180.);if(flash>0){g.setColour(look.tokens().out.withAlpha(flash*.45f));g.fillRect(610.f,135.f,2.f,137.f);}}
-    paintDynamicLabels(g);
+    if(g.clipRegionIntersects({24,568,912,168}))paintDynamicLabels(g);
 }
 void DuckPocketAudioProcessorEditor::captureBlurSnapshot(){
     if(capturingBlur||blurArea.isEmpty())return;
@@ -451,7 +455,7 @@ void DuckPocketAudioProcessorEditor::parentHierarchyChanged(){
 #if DUCK_ENABLE_OPENGL
 void DuckPocketAudioProcessorEditor::setOpenGL(bool enabled,bool persist){
     if(glowRenderer){glowRenderer->stop();glowRenderer.reset();}
-    glWasReady=false;setOpaque(!enabled);
+    lastGpuFrame.reset();glWasReady=false;setOpaque(!enabled);
     if(enabled&&getPeer()){glowRenderer=std::make_unique<PocketGlowRenderer>();glAttachTime=juce::Time::getMillisecondCounterHiRes();glowRenderer->attach(*this);}
     if(persist&&preferences){preferences->setValue("duckPocket.ui.opengl",enabled);preferences->saveIfNeeded();}
     invalidateChrome();
