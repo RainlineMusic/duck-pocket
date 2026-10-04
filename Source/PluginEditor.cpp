@@ -123,7 +123,11 @@ void ModernDial::paint(juce::Graphics& g){
         }
         const char* data=title=="Influence"?BinaryData::TitleInfluence_svg:(title=="Duration"?BinaryData::TitleDuration_svg:(title=="Output"?BinaryData::TitleOutput_svg:BinaryData::TitleMS_svg));
         const int length=title=="Influence"?BinaryData::TitleInfluence_svgSize:(title=="Duration"?BinaryData::TitleDuration_svgSize:(title=="Output"?BinaryData::TitleOutput_svgSize:BinaryData::TitleMS_svgSize));
-        heading=juce::Drawable::createFromImageData(data,size_t(length));
+        heading=title=="Attack"?nullptr:juce::Drawable::createFromImageData(data,size_t(length));
+        if(title=="Attack"){
+            juce::GlyphArrangement glyphs;glyphs.addLineOfText(pocketFont(14.f),title,0,0);const float width=glyphs.getBoundingBox(0,-1,true).getWidth(),r=radius+11.f;
+            bg.setColour(t.ink);for(int i=0;i<glyphs.getNumGlyphs();++i){const auto& glyph=glyphs.getGlyph(i);juce::Path path;glyph.createPath(path);const float x=glyph.getBounds().getCentreX(),angle=(x-width*.5f)/r;bg.fillPath(path,juce::AffineTransform::translation(-x,0).rotated(angle).translated(centre.x+std::sin(angle)*r,centre.y-std::cos(angle)*r));}
+        }
         if(heading){heading->replaceColour(juce::Colour(0xffced6e2),t.ink);heading->draw(bg,1.f);}
     }
     g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);g.drawImageTransformed(body,juce::AffineTransform::scale(1.f/bodyScale));
@@ -163,8 +167,8 @@ DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioPr
     auto saved=preferences->getValue("duckPocket.ui.theme",preferences->getValue("phasePocket.ui.theme","solidDark"));setTheme(saved=="neon"?PocketTheme::Neon:(saved=="amber"?PocketTheme::Amber:PocketTheme::SolidDark),false);
     gainWindow=preferences->getDoubleValue("duckPocket.ui.graphWindow",preferences->getDoubleValue("duckPocket.ui.gainWindow",preferences->getDoubleValue("phasePocket.ui.gainWindow",1.)));scopeWindow=gainWindow;
     setLookAndFeel(&look);setOpaque(true);setResizable(true,true);
-    for(auto* c:std::initializer_list<juce::Component*>{&influence,&duration,&outputGain,&sidechainRange,&processingRange,&midSide,&settingsButton,&bypassButton,&freezeButton,&expandButton})addAndMakeVisible(c);
-    influenceAttach=std::make_unique<SliderAttachment>(p.parameters,"amount",influence);durationIsRelative=p.parameters.getRawParameterValue("relativeDuration")->load()>.5f;duration.setDurationMode(durationIsRelative);durationAttach=std::make_unique<SliderAttachment>(p.parameters,durationIsRelative?"durationPercent":"duration",duration);duration.setDoubleClickReturnValue(true,durationIsRelative?100:2000);outputAttach=std::make_unique<SliderAttachment>(p.parameters,"outputGain",outputGain);outputGain.setDoubleClickReturnValue(true,0);influence.setDoubleClickReturnValue(true,100);midSide.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);midSide.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);midSide.setDoubleClickReturnValue(true,0);msAttach=std::make_unique<SliderAttachment>(p.parameters,"msBalance",midSide);midSide.onValueChange=[this]{midSide.repaint();};
+    for(auto* c:std::initializer_list<juce::Component*>{&influence,&duration,&attack,&outputGain,&mix,&sidechainRange,&processingRange,&midSide,&settingsButton,&bypassButton,&freezeButton,&expandButton})addAndMakeVisible(c);
+    influenceAttach=std::make_unique<SliderAttachment>(p.parameters,"amount",influence);durationIsRelative=p.parameters.getRawParameterValue("relativeDuration")->load()>.5f;duration.setDurationMode(durationIsRelative);durationAttach=std::make_unique<SliderAttachment>(p.parameters,durationIsRelative?"durationPercent":"duration",duration);duration.setDoubleClickReturnValue(true,durationIsRelative?100:2000);outputAttach=std::make_unique<SliderAttachment>(p.parameters,"outputGain",outputGain);outputGain.setDoubleClickReturnValue(true,0);mixAttach=std::make_unique<SliderAttachment>(p.parameters,"mix",mix);attackAttach=std::make_unique<SliderAttachment>(p.parameters,"attack",attack);attack.setDoubleClickReturnValue(true,0);attack.onDragStart=[this]{audioProcessor.parameters.getParameter("legacyAttack")->setValueNotifyingHost(0);};attack.onValueChange=[this]{audioProcessor.parameters.getParameter("legacyAttack")->setValueNotifyingHost(0);};influence.setDoubleClickReturnValue(true,100);midSide.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);midSide.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);midSide.setDoubleClickReturnValue(true,0);msAttach=std::make_unique<SliderAttachment>(p.parameters,"msBalance",midSide);midSide.onValueChange=[this]{midSide.repaint();};
     bypassButton.setClickingTogglesState(true);bypassAttach=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.parameters,"bypass",bypassButton);settingsButton.onClick=[this]{showSettingsMenu();};
     // One button freezes and resumes both graphs at once.
     freezeButton.setClickingTogglesState(true);freezeButton.setTooltip("Freeze both graphs");
@@ -174,7 +178,7 @@ DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioPr
     sidechainRange.onDragStart=[this]{rangeGesture=true;lowAttach->beginGesture();highAttach->beginGesture();};sidechainRange.onValueChange=[this]{float a=float(sidechainRange.getMinValue()),b=float(sidechainRange.getMaxValue());repaint(scaled(48,792,704,48));if(rangeGesture){lowAttach->setValueAsPartOfGesture(a);highAttach->setValueAsPartOfGesture(b);}else{lowAttach->setValueAsCompleteGesture(a);highAttach->setValueAsCompleteGesture(b);}};sidechainRange.onDragEnd=[this]{lowAttach->endGesture();highAttach->endGesture();rangeGesture=false;syncRange();};sidechainRange.onResetMin=[this]{lowAttach->setValueAsCompleteGesture(20);syncRange();};sidechainRange.onResetMax=[this]{highAttach->setValueAsCompleteGesture(20000);syncRange();};
     processLowAttach=std::make_unique<juce::ParameterAttachment>(*p.parameters.getParameter("processLow"),[this](float){syncProcessingRange();});processHighAttach=std::make_unique<juce::ParameterAttachment>(*p.parameters.getParameter("processHigh"),[this](float){syncProcessingRange();});processLowAttach->sendInitialUpdate();processHighAttach->sendInitialUpdate();
     processingRange.onDragStart=[this]{processRangeGesture=true;processLowAttach->beginGesture();processHighAttach->beginGesture();};processingRange.onValueChange=[this]{float a=float(processingRange.getMinValue()),b=float(processingRange.getMaxValue());repaint(scaled(48,839,704,48));if(processRangeGesture){processLowAttach->setValueAsPartOfGesture(a);processHighAttach->setValueAsPartOfGesture(b);}else{processLowAttach->setValueAsCompleteGesture(a);processHighAttach->setValueAsCompleteGesture(b);}};processingRange.onDragEnd=[this]{processLowAttach->endGesture();processHighAttach->endGesture();processRangeGesture=false;syncProcessingRange();};processingRange.onResetMin=[this]{processLowAttach->setValueAsCompleteGesture(20);syncProcessingRange();};processingRange.onResetMax=[this]{processHighAttach->setValueAsCompleteGesture(20000);syncProcessingRange();};
-    duration.setTooltip("Key length: 100% = AUTO; shorter percentages use the last measured event. First event uses AUTO. Legacy sessions retain milliseconds.");outputGain.setTooltip("Output gain: -12 to +6 dB; double-click resets to 0 dB");influence.setTooltip("Ducking depth");bypassButton.setTooltip("Enable / bypass processing");settingsButton.setTooltip("Settings");sidechainRange.setTooltip("Detector filter, 20 Hz to 20 kHz; Alt-click or double-click resets the nearest handle");midSide.setTooltip("0% MS = neutral; turn left for 0-100% MID, right for 0-100% SIDE. Double-click resets. Mono input contains Mid only");processingRange.setTooltip("Frequency range affected by ducking; 20 Hz to 20 kHz keeps the plain wideband duck");
+    duration.setTooltip("Key length: 100% = AUTO; shorter percentages use the last measured event. First event uses AUTO. Legacy sessions retain milliseconds.");outputGain.setTooltip("Output: drag up/down, -12 to +6 dB; double-click resets to 0.0 dB");mix.setTooltip("Mix: scale gain reduction in dB; 50% halves the ducking in dB. Double-click resets to 100%");attack.setTooltip("Attack: anticipatory fade, 0.0-5.0 ms within the existing lookahead; no extra latency. Double-click resets to 0 ms");influence.setTooltip("Ducking depth");bypassButton.setTooltip("Enable / bypass processing");settingsButton.setTooltip("Settings");sidechainRange.setTooltip("Detector filter, 20 Hz to 20 kHz; Alt-click or double-click resets the nearest handle");midSide.setTooltip("0% M/S = neutral; turn left for 0-100% mid, right for 0-100% side. Double-click resets. Mono input contains Mid only");processingRange.setTooltip("Frequency range affected by ducking; 20 Hz to 20 kHz keeps the plain wideband duck");
     filtersExpanded=preferences->getBoolValue("duckPocket.ui.filtersExpanded.v2",false);
     expandButton.setClickingTogglesState(true);expandButton.setToggleState(filtersExpanded,juce::dontSendNotification);expandButton.setTooltip("Show / hide Sidechain Filter and Processing Range");expandButton.onClick=[this]{setFiltersExpanded(expandButton.getToggleState());};
     int width=p.editorWidth.load();
@@ -256,7 +260,7 @@ void DuckPocketAudioProcessorEditor::resized(){
     // A larger transparent hit box preserves clickability at compact sizes.
     freezeButton.setBounds(scaled(766.98f,709.10f,32,32));settingsButton.setBounds(scaled(716,12,31,31));bypassButton.setBounds(scaled(755,12,31,31));
     influence.setBounds(scaled(60,98.71f,240,250));duration.setBounds(scaled(503,98.71f,240,250));
-    outputGain.setBounds(scaled(334,88.70f,132,135));midSide.setBounds(scaled(334,227.70f,132,135));
+    attack.setBounds(scaled(334,88.70f,132,135));mix.setBounds(scaled(418,12,90,31));outputGain.setBounds(scaled(585,12,115,31));midSide.setBounds(scaled(334,227.70f,132,135));
     expandButton.setBounds(scaled(320,753,160,36));
     sidechainRange.setVisible(filtersExpanded);processingRange.setVisible(filtersExpanded);
     sidechainRange.setBounds(scaled(65,815,670,28));processingRange.setBounds(scaled(65,862,670,28));
@@ -401,7 +405,7 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
             pathTop.push_back({x0,midY});pathBottom.push_back({x0,midY});
             for(int i=c;i<=e;++i){const float x=xOf(i);pathTop.push_back({x,midY-bucketHi[size_t(i)]*plot.getHeight()*.5f});pathBottom.push_back({x,midY-bucketLo[size_t(i)]*plot.getHeight()*.5f});}
             pathTop.push_back({x1,midY});pathBottom.push_back({x1,midY});
-            c=e+1;
+            const int firstColumn=c,lastColumn=e;c=e+1;
             juce::Path body;
             body.startNewSubPath(pathTop.front());
             if(longWindow){for(size_t i=1;i<pathTop.size();++i)body.lineTo(pathTop[i]);}
@@ -412,7 +416,7 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
             body.lineTo(pathBottom.front());body.closeSubPath();
             if(!emissionGraphics&&glow&&!longWindow&&!frozen){g.setColour(colour.withAlpha(.12f));g.strokePath(body,juce::PathStrokeType(3.5f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
             // No outline: the wave itself is filled with the colour the outline used to have.
-            g.setGradientFill(juce::ColourGradient(colour.withAlpha(.035f),plot.getX(),0,colour.brighter(.18f).withAlpha(.65f),plot.getRight(),0,false));g.fillPath(body);g.setGradientFill(juce::ColourGradient(colour.withAlpha(.07f),plot.getX(),0,colour.brighter(.35f),plot.getRight(),0,false));g.strokePath(body,juce::PathStrokeType(1.1f));float strength=0;for(int column=juce::jmax(0,juce::roundToInt((x0-plot.getX())/span));column<columns&&xOf(column)<=x1;++column)if(bucketHi[size_t(column)]>=bucketLo[size_t(column)])strength=juce::jmax(strength,std::abs(bucketLo[size_t(column)]),std::abs(bucketHi[size_t(column)]));emit(body,colour.brighter(.35f),4.f,juce::jlimit(0.f,1.f,strength));
+            g.setGradientFill(juce::ColourGradient(colour.withAlpha(.035f),plot.getX(),0,colour.brighter(.18f).withAlpha(.65f),plot.getRight(),0,false));g.fillPath(body);g.setGradientFill(juce::ColourGradient(colour.withAlpha(.07f),plot.getX(),0,colour.brighter(.35f),plot.getRight(),0,false));g.strokePath(body,juce::PathStrokeType(1.1f));float strength=0;for(int column=firstColumn;column<=lastColumn;++column)if(bucketHi[size_t(column)]>=bucketLo[size_t(column)])strength=juce::jmax(strength,std::abs(bucketLo[size_t(column)]),std::abs(bucketHi[size_t(column)]));emit(body,colour.brighter(.35f),4.f,juce::jlimit(0.f,1.f,strength));
         }
     }
 }
@@ -423,6 +427,7 @@ void DuckPocketAudioProcessorEditor::paintChrome(juce::Graphics& g){
     if((!chromeValid||!chrome.isValid()||chrome.getWidth()!=w||chrome.getHeight()!=h||std::abs(chromeScale-physicalScale)>.001f)&&(!resizing||!chrome.isValid())){
         ++chromeBuildCount;chrome=juce::Image(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());chromeScale=physicalScale;juce::Graphics cg(chrome);cg.addTransform(juce::AffineTransform::scale(physicalScale*float(getWidth())/800.f));const auto t=look.tokens();
         cg.setGradientFill(juce::ColourGradient(t.chassis,400,240,t.chassis.darker(.2f),0,expandedDesignHeight,true));cg.fillRect(0.f,0.f,800.f,expandedDesignHeight);
+        text(cg,"mix",{380,12,30,31},14,t.muted,juce::Justification::centredRight);text(cg,"output",{516,12,61,31},14,t.muted,juce::Justification::centredRight);
         juce::Random noise(0xD0C);for(int i=0;i<6500;++i){cg.setColour((i%2?juce::Colours::white:juce::Colours::black).withAlpha(.012f));cg.fillRect(float(noise.nextInt(800)),float(noise.nextInt(int(expandedDesignHeight))),1.f,1.f);}
         auto logo=juce::Drawable::createFromImageData(BinaryData::Logo_svg,BinaryData::Logo_svgSize);
         if(logo){logo->replaceColour(juce::Colour(0xffced6e2),t.brand);logo->drawAt(cg,11.0264f,5.2672f,1.f);}
@@ -601,7 +606,7 @@ void DuckPocketAudioProcessorEditor::frameTick(){
         else{displayTime+=dt;displayTime+=(target-displayTime)*.06;}
         displayTime=juce::jmin(displayTime,latest);
     }
-    influence.setMeter(currentReduction,signalPeak);outputGain.setMeter(0,signalPeak);duration.setMeter(0,0);
+    influence.setMeter(currentReduction,signalPeak);attack.setMeter(0,0);duration.setMeter(0,0);
     const bool target=audioProcessor.parameters.getRawParameterValue("bypass")->load()>.5f||audioProcessor.displayBypass.load();
     if(target!=bypassTarget){
         bypassTarget=target;

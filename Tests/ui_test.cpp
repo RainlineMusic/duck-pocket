@@ -3,12 +3,14 @@
 #include <cstdlib>
 struct DuckUiTestAccess {
  static void theme(DuckPocketAudioProcessorEditor& e,PocketTheme t){e.setTheme(t,false);}
+ static HeaderValue& header(DuckPocketAudioProcessorEditor& e,bool output){return output?e.outputGain:e.mix;}
+ static ModernDial& attack(DuckPocketAudioProcessorEditor& e){return e.attack;}
  static ModernDial& balance(DuckPocketAudioProcessorEditor& e){return e.midSide;}
  static bool layout(DuckPocketAudioProcessorEditor& e){
   const auto bounds=e.getLocalBounds();
-  const juce::Component* controls[]{&e.influence,&e.duration,&e.outputGain,&e.midSide,&e.sidechainRange,&e.processingRange,&e.settingsButton,&e.bypassButton,&e.freezeButton};
+  const juce::Component* controls[]{&e.influence,&e.duration,&e.attack,&e.outputGain,&e.mix,&e.midSide,&e.sidechainRange,&e.processingRange,&e.settingsButton,&e.bypassButton,&e.freezeButton};
   for(auto* c:controls)if(c->isVisible()&&!bounds.contains(c->getBounds()))return false;
-  for(size_t i=0;i<9;++i)for(size_t j=i+1;j<9;++j)if(controls[i]->getBounds().intersects(controls[j]->getBounds()))return false;
+  for(size_t i=0;i<11;++i)for(size_t j=i+1;j<11;++j)if(controls[i]->getBounds().intersects(controls[j]->getBounds()))return false;
   return e.gainArea.getWidth()==e.scopeArea.getWidth()&&e.gainArea.getHeight()==e.scopeArea.getHeight();
  }
  static void freeze(DuckPocketAudioProcessorEditor& e){e.freezeButton.triggerClick();}
@@ -127,6 +129,11 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  PocketLook dialLook;ModernDial durationDial(dialLook,"Duration","","ms",0,true);durationDial.setRange(5,2000,1);durationDial.setSkewFactor(.25);durationDial.setValue(1999,juce::dontSendNotification);check(!durationDial.isAutoValue(),"1999 ms remains finite");durationDial.setValue(2000,juce::dontSendNotification);check(durationDial.isAutoValue(),"2000 ms is AUTO");durationDial.setRange(1,100,1);durationDial.setValue(99,juce::dontSendNotification);check(!durationDial.isAutoValue(),"99 percent remains finite");durationDial.setValue(100,juce::dontSendNotification);check(durationDial.isAutoValue(),"100 percent is AUTO");
  ModernDial outputDial(dialLook,"Output","dB","dB",0,false,false,true);for(int size:{66,101,132,198}){outputDial.setSize(size,size);for(const char* value:{"-12.00","-0.01","0.00","6.00"}){const float height=outputDial.valueTextHeight(value);check(height>=6.f,"Output value stays readable");check(juce::GlyphArrangement::getStringWidth(pocketFont(height*132.f/float(size),true),value)*float(size)/132.f<=float(size)*60.f/132.f+.01f,"Output endpoints fit compact dial");}}
  outputDial.setRange(-12,6);outputDial.setValue(-.0000003,juce::dontSendNotification);check(outputDial.displayedValue()=="0.00","Output floating-point zero has no minus sign");outputDial.setValue(-.01,juce::dontSendNotification);check(outputDial.displayedValue()=="-0.01","negative Output remains negative");
+ HeaderValue outputField(dialLook,true);outputField.setRange(-12,6,.01);outputField.setValue(-.000003,juce::dontSendNotification);check(outputField.displayedValue()=="0.0 dB","header Output zero has no minus");outputField.setValue(-.1,juce::dontSendNotification);check(outputField.displayedValue()=="-0.1 dB","header Output uses one decimal");
+ ModernDial attackDial(dialLook,"Attack","ms","ms",0,false,false,true);attackDial.setRange(0,5,.1);attackDial.setValue(.1,juce::dontSendNotification);check(attackDial.displayedValue()=="0.1","Attack value and ms unit use separate lines");
+ auto* outParameter=p.parameters.getParameter("outputGain");outParameter->setValueNotifyingHost(outParameter->convertTo0to1(-.1f));pump(5);check(DuckUiTestAccess::header(*e,true).displayedValue()=="-0.1 dB","header Output follows host automation");DuckUiTestAccess::header(*e,true).setValue(0,juce::sendNotificationSync);
+ auto* mixParameter=p.parameters.getParameter("mix");mixParameter->setValueNotifyingHost(mixParameter->convertTo0to1(50));pump(5);check(DuckUiTestAccess::header(*e,false).displayedValue()=="50%","header Mix follows host automation");DuckUiTestAccess::header(*e,false).setValue(25,juce::sendNotificationSync);check(p.parameters.getRawParameterValue("mix")->load()==25,"numeric Mix writes the attached parameter");DuckUiTestAccess::header(*e,false).setValue(100,juce::sendNotificationSync);
+ p.parameters.getParameter("legacyAttack")->setValueNotifyingHost(1);DuckUiTestAccess::attack(*e).setValue(.1,juce::sendNotificationSync);check(std::abs(p.parameters.getRawParameterValue("attack")->load()-.1f)<.001f&&p.parameters.getRawParameterValue("legacyAttack")->load()==0,"editing Attack exits migrated compatibility mode");DuckUiTestAccess::attack(*e).setValue(0,juce::sendNotificationSync);
  for(int width:{400,615,800,1500}){e->setSize(width,juce::roundToInt(width*905./800.));check(DuckUiTestAccess::layout(*e),"controls remain contained and separate during resize");}
  DuckUiTestAccess::collapse(*e,false);check(!DuckUiTestAccess::rangesVisible(*e)&&e->getHeight()<int(e->getWidth()*905./800.),"collapse hides both filters and shortens the window");
  DuckUiTestAccess::collapse(*e,true);check(DuckUiTestAccess::rangesVisible(*e),"expand restores both filters");
@@ -155,7 +162,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
   auto* param=p.parameters.getParameter("msBalance");param->setValueNotifyingHost(param->convertTo0to1(float(value)));pump(5);
   check(std::abs(balance.getValue()-value)<.00001,"M/S knob follows host automation");
   check(balance.displayedValue()==juce::String(juce::roundToInt(std::abs(value)*100.))+"%","M/S magnitude display");
-  check(balance.balanceLabel()==(value<0?"MID":(value>0?"SIDE":"MS")),"M/S direction display");
+  check(balance.balanceLabel()==(value<0?"mid":(value>0?"side":"M/S")),"M/S direction display");
  }
  balance.setValue(0,juce::sendNotificationSync);check(std::abs(p.parameters.getRawParameterValue("msBalance")->load())<.00001f,"M/S gesture returns parameter to neutral");
  // Reproduce host stop/reset after a freeze/resume cut-off at >1 second.
@@ -197,5 +204,6 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
   auto closedStream=output.getChildFile("collapsed-"+juce::String(width)+"-2x.png").createOutputStream();check(closedStream&&juce::PNGImageFormat().writeImageToStream(closed,*closedStream),"collapsed review capture");
   DuckUiTestAccess::collapse(*e,true);
  }
+ DuckUiTestAccess::collapse(*e,false);p.parameters.getParameter("bypass")->setValueNotifyingHost(1);DuckUiTestAccess::tick(*e);auto bypassImage=e->createComponentSnapshot(e->getLocalBounds(),true,2.f);auto bypassStream=output.getChildFile("bypass-615-2x.png").createOutputStream();check(bypassStream&&juce::PNGImageFormat().writeImageToStream(bypassImage,*bypassStream),"smooth bypass review capture");bypassStream.reset();p.parameters.getParameter("bypass")->setValueNotifyingHost(0);
  e.reset();std::cout<<"PASS real JUCE theme captures and chrome reuse\n";
 }

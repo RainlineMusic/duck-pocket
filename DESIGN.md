@@ -1,3 +1,13 @@
+# Header Mix/Output, Attack and stable glow — current
+
+Header numeric fields: Mix (418,12,90,31), Output (585,12,115,31); labels `mix` and `output` at their left. Field height equals settings/power (31 units). Group spacing is 8 units, with a 16-unit breathing space before Settings. Both fields use native slider host gestures, vertical drag, keyboard input, double-click reset and tooltips. Output displays one decimal with negative zero suppressed. The old central Output position (334,88.70,132,135) becomes Attack, with a cached Inter curved heading and value/unit on separate lines. Neutral M/S subtitle uses `M/S`; direction uses lowercase `mid`/`side`.
+
+Graph glow has a fixed spatial kernel. Each waveform run drives its own emission strength from its own extrema; KEY energy cannot be driven by OUT. Gain glow uses actual displayed reduction, including Mix. The shared GPU/software intensity is fixed; age gradient and phosphor decay retain the directional history. Bypass is cached at half resolution and uses contiguous sliding-window Gaussian approximation; there are no skipped texels to create a mosaic on Retina/large windows.
+
+Schema 3 appends Mix and Attack without changing existing IDs, ranges, parameter indices or latency. Existing projects retain their original fixed soft attack until editing Attack. New instances use aligned 0 ms onset; 0.1–5.0 ms creates a finite pre-transient ramp. Mix is dB gain scaling with an exact identity at 100%, exact dry before Output at 0%, and actual scaled control metering.
+
+Previous layout/material sections below remain applicable unless superseded here.
+
 # Photoshop target layout and deeper materials — current
 
 Reference pair: 1894×2048; intentional deltas are scaled isotropically by 800/1894 into the existing 800-unit design space. Influence/Duration move up 22 reference px (9.293 units); Output/M/S down 49 px (20.697 units); logo moves +19/+3 px (+8.026/+1.267 units). Sizes and X axes stay unchanged. Rainline was already absent. Freeze visual target is reference (1830,1693,48,48), with a transparent 32-unit hit box around the 20.275-unit glyph. Settings and power positions remain intact. Graph geometry and parameter behaviour are unchanged.

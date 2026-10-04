@@ -79,10 +79,11 @@ public:
     juce::String displayedValue() const {
         if(unit=="balance")return juce::String(juce::roundToInt(std::abs(getValue())*100.))+"%";
         if(unit=="dB")return juce::String(std::abs(getValue())<.005?0.:getValue(),2);
+        if(title=="Attack")return juce::String(getValue(),1);
         if(isAutoValue()&&unit=="ms")return "AUTO";
         return juce::String(getValue(),title=="Influence"?1:0)+(unit=="%"?"%":" ms");
     }
-    juce::String balanceLabel() const {return getValue()<-.0001?"MID":(getValue()>.0001?"SIDE":"MS");}
+    juce::String balanceLabel() const {return getValue()<-.0001?"mid":(getValue()>.0001?"side":"M/S");}
     void setMeter(float reduction,float signal){if(std::abs(gr-reduction)>.001f||std::abs(activity-signal)>.005f){gr=reduction;activity=signal;repaint();}}
     void setDurationMode(bool relative){unit=relative?"%":"ms";subtitle=relative?"Key length":"Legacy length";repaint();}
 private:
@@ -96,6 +97,22 @@ private:
     float bodyScale=0,gr=0,activity=0,emphasis=0,targetEmphasis=0;
     void animate(float target){targetEmphasis=target;startTimerHz(60);}
     void timerCallback() override {emphasis+=(targetEmphasis-emphasis)*.3f;if(std::abs(targetEmphasis-emphasis)<.01f){emphasis=targetEmphasis;stopTimer();}repaint();}
+};
+
+// Numeric vertical-drag slider: standard JUCE attachment handles host gestures,
+// automation and keyboard input without introducing a second parameter path.
+class HeaderValue final:public juce::Slider {
+public:
+    HeaderValue(PocketLook& l,bool decibels):look(l),db(decibels){setSliderStyle(juce::Slider::RotaryVerticalDrag);setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);setMouseDragSensitivity(db?180:200);setDoubleClickReturnValue(true,db?0:100);setWantsKeyboardFocus(true);}
+    juce::String displayedValue() const {return db?juce::String(std::abs(getValue())<.05?0.:getValue(),1)+" dB":juce::String(getValue(),0)+"%";}
+    void paint(juce::Graphics& g) override {
+        const auto t=look.tokens();const float scale=float(getHeight())/31.f;auto r=getLocalBounds().toFloat().reduced(.75f*scale);
+        g.setGradientFill(juce::ColourGradient(t.raised.brighter(.18f),0,0,t.raised.darker(.15f),0,float(getHeight()),false));g.fillRoundedRectangle(r,2.5f*scale);
+        g.setColour(t.out.withAlpha(isMouseOverOrDragging()?.8f:.45f));g.drawRoundedRectangle(r,2.5f*scale,juce::jmax(.6f,scale));
+        g.setColour(t.ink);g.setFont(pocketFont(juce::jmax(10.f,14.f*scale)));g.drawText(displayedValue(),r,juce::Justification::centred);
+    }
+private:
+    PocketLook& look;bool db;
 };
 
 class DuckPocketAudioProcessorEditor final:public juce::AudioProcessorEditor {
@@ -126,11 +143,12 @@ private:
     juce::TooltipWindow tooltips{this,700};
     ModernDial influence{look,"Influence","Depth","%",0xff5987ff};
     ModernDial duration{look,"Duration","Sidechain length","ms",0xff32d4cb,true,false,false,"AUTO"};
-    ModernDial outputGain{look,"Output","dB","dB",0xfff1e84b,false,false,true};
+    ModernDial attack{look,"Attack","ms","ms",0,false,false,true};
+    HeaderValue outputGain{look,true},mix{look,false};
     ResettableRangeSlider sidechainRange,processingRange;
     ModernDial midSide{look,"M/S Balance","","balance",0,false,false,true};
     juce::TextButton settingsButton{"settings"},bypassButton{"power"},freezeButton{"freeze"},expandButton{"expand"};
-    std::unique_ptr<SliderAttachment> influenceAttach,durationAttach,outputAttach,msAttach;
+    std::unique_ptr<SliderAttachment> influenceAttach,durationAttach,outputAttach,msAttach,attackAttach,mixAttach;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttach;
     std::unique_ptr<juce::ParameterAttachment> lowAttach,highAttach,processLowAttach,processHighAttach;
     std::unique_ptr<juce::PropertiesFile> preferences;

@@ -1,3 +1,11 @@
+## Mix / Attack revision
+
+- Header `mix` (0–100%, default 100%) and `output` (-12…+6 dB, default 0.0 dB) use vertical numeric dragging; double-click restores defaults. Output keeps its existing ID/range and automation. Mix scales M/S component reduction in dB, without a parallel dry bus: 15 dB at 50% becomes 7.5 dB. Gain History and Influence show the resulting control reduction. In a selected frequency band this is the requested band reduction, not a broadband loudness measurement.
+- Attack replaces the central Output dial: 0.0–5.0 ms, 0.1 ms steps. A finite anticipatory ramp reaches the requested reduction by the delayed key transient; it never changes the existing 5 ms latency. New instances at 0.0 ms use instantaneous aligned onset. Schema-2 and older projects retain their original fixed soft attack until Attack is changed; schema 3 stores this compatibility flag. Mix defaults to 100% in migrated projects. Old IDs/normalised automation remain intact; new parameters are appended.
+- Neutral balance reads `0% / M/S`, with `mid` or `side` when turned.
+- Each scope waveform supplies its own emission energy; OUT no longer modulates KEY or Gain History glow. Blur footprint is fixed, with the existing age fade retained. Bypass uses a cached half-resolution, contiguous three-pass blur instead of sparse one-sixth-resolution sampling.
+- Complete zero gain has no finite dB value: intermediate Mix scales use a -120 dB floor; 100% preserves exact original silence, and 0% returns exact delayed dry before Output gain. Mix automation is smoothed and snaps back to exact endpoints.
+
 # Duck Pocket 1.0.0
 
 JUCE 8.0.4 sidechain VST3 / AAX by Rainline Music.
