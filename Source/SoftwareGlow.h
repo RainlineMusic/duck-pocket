@@ -11,7 +11,7 @@ public:
             trail=make(emission.getWidth(),emission.getHeight());shifted=make(emission.getWidth(),emission.getHeight());lastTime=-1;
         }
         if(time<lastTime)reset();
-        if(lastTime>=0&&time==lastTime){
+        if(lastTime>=0&&std::abs(time-lastTime)<1.0e-9){
             emission.clear(emission.getBounds());juce::Graphics g(emission);g.drawImageAt(trail,0,0);return;
         }
         if(lastTime>=0){

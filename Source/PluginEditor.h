@@ -103,6 +103,7 @@ private:
 #if DUCK_ENABLE_OPENGL
     std::unique_ptr<PocketGlowRenderer> glowRenderer;
     std::shared_ptr<const PocketGlowRenderer::Frame> lastGpuFrame;
+    std::array<PocketPhosphorTrail,2> gpuPhosphor;
     double glAttachTime=0;
     bool glWasReady=false;
     void setOpenGL(bool enabled,bool persist=true);

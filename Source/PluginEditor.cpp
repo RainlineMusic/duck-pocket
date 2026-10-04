@@ -153,11 +153,19 @@ DuckPocketAudioProcessorEditor::~DuckPocketAudioProcessorEditor(){vblank.reset()
     saveSize();audioProcessor.editorOpen.store(false);if(rangeGesture){lowAttach->endGesture();highAttach->endGesture();}if(processRangeGesture){processLowAttach->endGesture();processHighAttach->endGesture();}setLookAndFeel(nullptr);}
 void DuckPocketAudioProcessorEditor::saveSize(){if(!ready||!preferences)return;audioProcessor.editorWidth.store(getWidth());preferences->setValue("duckPocket.ui.width",getWidth());preferences->saveIfNeeded();resizeStamp=0;}
 void DuckPocketAudioProcessorEditor::invalidateChrome(){chromeValid=false;repaint();}
-void DuckPocketAudioProcessorEditor::setTheme(PocketTheme t,bool persist){look.theme=t;if(persist&&preferences){preferences->setValue("duckPocket.ui.theme",t==PocketTheme::Neon?"neon":(t==PocketTheme::Amber?"amber":(t==PocketTheme::SolidDark?"solidDark":"solidWhite")));preferences->saveIfNeeded();}chromeValid=false;for(auto& layer:softwarePlots)layer.reset();repaint();for(auto* c:getChildren())c->repaint();if(bypassMix>0)juce::MessageManager::callAsync([safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this)]{if(safe)safe->captureBlurSnapshot();});}
+void DuckPocketAudioProcessorEditor::setTheme(PocketTheme t,bool persist){look.theme=t;if(persist&&preferences){preferences->setValue("duckPocket.ui.theme",t==PocketTheme::Neon?"neon":(t==PocketTheme::Amber?"amber":(t==PocketTheme::SolidDark?"solidDark":"solidWhite")));preferences->saveIfNeeded();}chromeValid=false;for(auto& layer:softwarePlots)layer.reset();
+#if DUCK_ENABLE_OPENGL
+    for(auto& phosphor:gpuPhosphor)phosphor.reset();
+#endif
+    repaint();for(auto* c:getChildren())c->repaint();if(bypassMix>0)juce::MessageManager::callAsync([safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this)]{if(safe)safe->captureBlurSnapshot();});}
 void DuckPocketAudioProcessorEditor::setHistoryWindow(double seconds){gainWindow=scopeWindow=seconds;preferences->setValue("duckPocket.ui.graphWindow",seconds);preferences->saveIfNeeded();invalidateChrome();}
 // A single snowflake button freezes and resumes both graphs together.
 void DuckPocketAudioProcessorEditor::setFrozen(bool frozen){
     triggerStamp=-1;gainFrozen=scopeFrozen=frozen;frozenGain.clear();frozenSummary.clear();
+    for(auto& layer:softwarePlots)layer.reset();
+#if DUCK_ENABLE_OPENGL
+    for(auto& phosphor:gpuPhosphor)phosphor.reset();
+#endif
     if(frozen){
         frozenGain.reserve(size_t(filled));
         for(int i=0;i<filled;++i)frozenGain.push_back(history[size_t((cursor-filled+i+historyCapacity)%historyCapacity)]);
@@ -406,6 +414,7 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
             layer.emission=juce::Image(juce::Image::ARGB,juce::jmax(1,juce::roundToInt(plot.getWidth()*raster)),juce::jmax(1,juce::roundToInt(plot.getHeight()*raster)),true,juce::SoftwareImageType());
             juce::Graphics eg(layer.emission);eg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(raster));emissionGraphics=&eg;graph(g,{24,y,640,224},i==0);emissionGraphics=nullptr;
             layer.intensity=(gainFrozen||scopeFrozen)?0.f:juce::jlimit(0.f,.32f,signalPeak*.25f+currentReduction*.07f);
+            if(i==1){if(scopeFrozen)gpuPhosphor[size_t(i)].reset();else gpuPhosphor[size_t(i)].apply(layer.emission,displayTime,scopeWindow);}
         }
         lastGpuFrame=frame;glowRenderer->publish(std::move(frame));
         }
@@ -459,7 +468,7 @@ void DuckPocketAudioProcessorEditor::setOpenGL(bool enabled,bool persist){
     enabled=false;
 #endif
     if(glowRenderer){glowRenderer->stop();glowRenderer.reset();}
-    lastGpuFrame.reset();glWasReady=false;setOpaque(!enabled);
+    lastGpuFrame.reset();for(auto& phosphor:gpuPhosphor)phosphor.reset();glWasReady=false;setOpaque(!enabled);
     if(enabled&&getPeer()){glowRenderer=std::make_unique<PocketGlowRenderer>();glAttachTime=juce::Time::getMillisecondCounterHiRes();glowRenderer->attach(*this);}
     if(persist&&preferences){preferences->setValue("duckPocket.ui.opengl",enabled);preferences->saveIfNeeded();}
     invalidateChrome();
@@ -475,7 +484,11 @@ void DuckPocketAudioProcessorEditor::frameTick(){
     syncDurationMode();
     if(!chromeValid&&resizeStamp>0&&juce::Time::getMillisecondCounterHiRes()-resizeStamp>100)repaint();
     const auto epoch=audioProcessor.traceGeneration.load(std::memory_order_relaxed);
-    if(epoch!=traceGeneration){traceGeneration=epoch;cursor=filled=summaryCursor=summaryFilled=0;summaryBin=-1;displayTime=lastClock=lastLatest=gapMax=0;lastPaintedTime=-1;lastVisibleSignalTime=-1;signalPeak=currentReduction=0;for(auto& layer:softwarePlots)layer.reset();triggerStamp=-1;repaint(gainArea);repaint(scopeArea);}
+    if(epoch!=traceGeneration){traceGeneration=epoch;cursor=filled=summaryCursor=summaryFilled=0;summaryBin=-1;displayTime=lastClock=lastLatest=gapMax=0;lastPaintedTime=-1;lastVisibleSignalTime=-1;signalPeak=currentReduction=0;for(auto& layer:softwarePlots)layer.reset();
+#if DUCK_ENABLE_OPENGL
+        for(auto& phosphor:gpuPhosphor)phosphor.reset();
+#endif
+        triggerStamp=-1;repaint(gainArea);repaint(scopeArea);}
     PocketTrace v;bool fresh=false;const float previousPeak=signalPeak;float framePeak=0;
     while(audioProcessor.popTrace(v)){
         if(v.generation!=traceGeneration||!std::isfinite(v.time))continue;
