@@ -82,3 +82,7 @@ Archive notes and `FILES-TO-DELETE.txt` were not removed. Proposed cleanup: move
 ## Target-test adjustment
 
 The first Mac TSan run passed the five engine regressions and stopped on the processor impulse assertion's exact float equality; it did not report a data race. JUCE's float parameter conversion/snapping may contract multiply-add on ARM (for example, nominal 0 dB can become approximately ±3e-7 dB). The processor impulse test now checks level within 1e-6 while retaining the exact expected sample position and detailed failure diagnostics. The frozen-baseline DSP null and 100%-AUTO comparisons remain bit-exact; DSP/parameter ranges were not changed to satisfy the test. The next target run determines whether this resolves the assertion.
+
+## Completed target CI (revision c830f991)
+
+macOS universal and Windows x64 VST3/AAX build jobs completed successfully, including all six regression tests, real JUCE theme captures, packaging and pluginval strictness 5. Mac ASan/UBSan and TSan jobs also completed successfully, exercising all six tests and software captures. This revision contains the impulse rounding correction. The subsequent dirty-region optimisation and bundle-license copy are undergoing the same CI again; the Pro Tools/AAX/Reaper/Live manual and native GPU profiling gates remain open. Font licensing is copied into each delivered plug-in's Contents/Resources before signing.

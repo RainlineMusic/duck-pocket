@@ -81,3 +81,13 @@ if(DUCK_BUILD_UI_TESTS)
   target_link_libraries(PocketUITest PRIVATE juce::juce_opengl)
  endif()
 endif()
+# Carry the embedded-font license in every delivered plug-in bundle, before
+# CI signs/notarises it. Fonts remain embedded; only the license is copied.
+foreach(format VST3 AAX)
+ if(TARGET DuckPocket_${format})
+  add_custom_command(TARGET DuckPocket_${format} POST_BUILD
+   COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:DuckPocket_${format}>/../Resources"
+   COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Fonts/OFL.txt" "$<TARGET_FILE_DIR:DuckPocket_${format}>/../Resources/IBM-Plex-OFL.txt"
+   VERBATIM)
+ endif()
+endforeach()
