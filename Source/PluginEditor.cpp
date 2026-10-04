@@ -261,7 +261,14 @@ void DuckPocketAudioProcessorEditor::resized(){
     sidechainRange.setVisible(filtersExpanded);processingRange.setVisible(filtersExpanded);
     sidechainRange.setBounds(scaled(65,815,670,28));processingRange.setBounds(scaled(65,862,670,28));
     blurArea=scaled(0,56,800,designHeight()-56).getIntersection(getLocalBounds());gainArea=scaled(32,396,752,160);scopeArea=scaled(32,583,752,160);
-    blurredSnapshot={};if(ready){audioProcessor.editorWidth.store(getWidth());resizeStamp=juce::Time::getMillisecondCounterHiRes();}
+    blurredSnapshot={};if(ready){
+        audioProcessor.editorWidth.store(getWidth());
+        // Height-only folds need no cache debounce. Real width changes still
+        // invalidate chrome so the idle VBlank tick completes the delayed rebuild.
+        if(chrome.isValid()&&chrome.getWidth()!=juce::roundToInt(getWidth()*chromeScale)){
+            chromeValid=false;resizeStamp=juce::Time::getMillisecondCounterHiRes();
+        }
+    }
 }
 void DuckPocketAudioProcessorEditor::setFiltersExpanded(bool expanded,bool persist){
     if(filtersExpanded==expanded)return;

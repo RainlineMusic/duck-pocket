@@ -27,6 +27,7 @@ struct DuckUiTestAccess {
  static void settle(DuckPocketAudioProcessorEditor& e){e.resizeStamp=0;}
  static std::array<std::uint64_t,2> plots(DuckPocketAudioProcessorEditor& e){return {e.softwarePlots[0].prepares,e.softwarePlots[1].prepares};}
  static std::uint64_t paints(DuckPocketAudioProcessorEditor& e){return e.paintCount;}
+ static bool widthResizePending(DuckPocketAudioProcessorEditor& e){return !e.chromeValid&&e.resizeStamp>0;}
  static std::uint64_t caches(DuckPocketAudioProcessorEditor& e){return e.chromeBuildCount;}
 #if DUCK_ENABLE_OPENGL
  static void gl(DuckPocketAudioProcessorEditor& e,bool enabled){e.setOpenGL(enabled,false);}
@@ -136,7 +137,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    for(int y=0;y<topHeight;++y)for(int x=0;x<a.width;++x)if(!grip.contains(x,y)&&a.getPixelColour(x,y)!=b.getPixelColour(x,y)){std::cerr<<"fold diff width="<<width<<" fold="<<fold<<" pixel="<<x<<","<<y<<" before="<<a.getPixelColour(x,y).toString()<<" after="<<b.getPixelColour(x,y).toString()<<" height="<<e->getHeight()<<"\n";check(false,"paused top/graph pixels stay identical through fold");}
   }
  }
- e->setSize(800,905);DuckUiTestAccess::settle(*e);
+ e->setSize(800,905);check(DuckUiTestAccess::widthResizePending(*e),"real width resize still schedules a rebuild while transport is idle");DuckUiTestAccess::settle(*e);
  DuckUiTestAccess::freeze(*e);pump(10);check(DuckUiTestAccess::frozen(*e),"freeze button freezes both graphs");
  DuckUiTestAccess::freeze(*e);pump(10);check(!DuckUiTestAccess::frozen(*e),"freeze button resumes both graphs");
  auto& balance= DuckUiTestAccess::balance(*e);
