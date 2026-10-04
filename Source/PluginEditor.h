@@ -63,14 +63,20 @@ public:
     // (e.g. "AUTO"); empty means keep the default infinity glyph.
     ModernDial(PocketLook&,juce::String,juce::String,juce::String,juce::uint32,bool=false,bool=false,bool=false,juce::String={});
     ~ModernDial() override {stopTimer();}
+    bool isAutoValue() const {return infinity&&getValue()>=getMaximum();}
+    float valueTextHeight(const juce::String& value) const {
+        const float preferred=compact?17.f:(title=="Influence"?29.f:25.f);
+        if(!compact)return preferred;
+        const float diameter=float(juce::jmin(getWidth(),getHeight()))*.66f;
+        const float width=juce::GlyphArrangement::getStringWidth(pocketFont(preferred,true),value);
+        return juce::jlimit(11.f,preferred,preferred*diameter/juce::jmax(1.f,width+1.f));
+    }
     void mouseEnter(const juce::MouseEvent& e) override {juce::Slider::mouseEnter(e);animate(.65f);}
     void mouseExit(const juce::MouseEvent& e) override {juce::Slider::mouseExit(e);animate(0);}
     void mouseDown(const juce::MouseEvent& e) override {juce::Slider::mouseDown(e);animate(1);}
     void mouseUp(const juce::MouseEvent& e) override {juce::Slider::mouseUp(e);animate(isMouseOver()?.65f:0);}
     void paint(juce::Graphics&) override;
     void setMeter(float reduction,float signal){if(std::abs(gr-reduction)>.001f||std::abs(activity-signal)>.005f){gr=reduction;activity=signal;repaint();}}
-    float valueTextHeight(const juce::String&) const;
-    bool isAutoValue() const {return infinity&&getValue()>=getMaximum();}
     void setDurationMode(bool relative){unit=relative?"%":"ms";subtitle=relative?"Key length":"Legacy length";repaint();}
 private:
     PocketLook& look;
