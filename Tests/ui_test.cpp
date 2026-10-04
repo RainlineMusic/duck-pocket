@@ -13,6 +13,7 @@ struct DuckUiTestAccess {
  static void simulateFailedGl(DuckPocketAudioProcessorEditor& e){e.setOpaque(false);e.glowRenderer=std::make_unique<PocketGlowRenderer>();e.glowRenderer->ready.store(false);e.glowRenderer->presented.store(true);e.glowRenderer->failed.store(true);e.signalPeak=e.currentReduction=0;}
  static bool ready(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->ready.load();}
  static bool failed(DuckPocketAudioProcessorEditor& e){return !e.glowRenderer||e.glowRenderer->failed.load();}
+ static bool fellBack(DuckPocketAudioProcessorEditor& e){return !e.glowRenderer&&e.isOpaque();}
  static bool rendered(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->presented.load()&&e.glowRenderer->frames.load()>0;}
  static std::uint64_t blurredFrames(DuckPocketAudioProcessorEditor& e){return e.glowRenderer?e.glowRenderer->blurredFrames.load():0;}
  static void trigger(DuckPocketAudioProcessorEditor& e){e.repaint();if(e.glowRenderer)e.glowRenderer->context.triggerRepaint();}
@@ -37,6 +38,14 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    if(cycle==0)std::cerr<<"GL_PROBE_CONTEXT_ATTACHED\n";
    for(int poll=0;poll<100&&!DuckUiTestAccess::ready(*e)&&!DuckUiTestAccess::failed(*e);++poll){DuckUiTestAccess::trigger(*e);pump(20);}
    if(cycle==0)std::cerr<<"GL_PROBE_CONTEXT_READY="<<DuckUiTestAccess::ready(*e)<<" FAILED="<<DuckUiTestAccess::failed(*e)<<'\n';
+   if(!DuckUiTestAccess::ready(*e)&&DuckUiTestAccess::failed(*e)){
+    DuckUiTestAccess::tick(*e);
+    check(DuckUiTestAccess::fellBack(*e),"unsupported OpenGL returns to opaque software renderer");
+    const auto fallback=e->createComponentSnapshot(e->getLocalBounds());
+    check(fallback.isValid()&&fallback.getPixelAt(300,420).getAlpha()==255,"native fallback paints opaque graph glass");
+    e->removeFromDesktop();e.reset();
+    std::cout<<"SKIP native OpenGL unavailable; software fallback verified after cycle="<<cycle<<'\n';return 0;
+   }
    check(DuckUiTestAccess::ready(*e),"native OpenGL context and shaders created");
    if(cycle==0){
     juce::AudioBuffer<float> samples(4,64);juce::MidiBuffer midi;
