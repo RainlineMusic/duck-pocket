@@ -1,3 +1,15 @@
+# Designer UI update
+
+This revision changes only editor/rendering assets, typography and UI tests; DSP and processor sources are unchanged. Exact user-supplied dial material/headings/logo replace the earlier design. Live graphs retain the existing trace/bucketing system, now across the full width. The M/S control becomes rotary while keeping `msBalance` ID/range/state and displaying directional magnitude (0% MS / 100% MID / 100% SIDE). Default Duration displays 100% with AUTO beneath.
+
+Settings, bypass/blur state, graph freeze, handle resets, themes and graph-window menu remain. Static rings cache their blur by normalised position/theme/size/DPI. Materials render without OpenGL. macOS GPU remains experimental/off by default; Windows native rendering remains selected after earlier WGL failures. Backend behaviour is unchanged by this update.
+
+Local checks: JUCE Debug compilation; six processor/DSP regressions including frozen-baseline null passed. UI tests verify M/S automation/display/reset, freeze/resume, non-overlapping controls at widths 800/960/1500, compact text fit, physical-scale chrome reuse and plot-specific dirty clips. Four themes × three real-signal states × 1×/2× captures were generated. Latest Mac/Win CI is recorded below when completed. Host Pro Tools/AAX manual, monitor/DPI transitions and 1/8/32-instance profiling remain release gates, not measured here.
+
+Previous phosphor revision `7caf5f97` passed both Mac/Win build/validation and macOS sanitizer workflows. Historical report follows; its earlier appearance descriptions are superseded by this SVG-based update.
+
+---
+
 # Duck Pocket — implementation and verification
 
 Base: Release-1.0, `4f20dbd1a7b2d2ff245f05626878f3098adec438`.

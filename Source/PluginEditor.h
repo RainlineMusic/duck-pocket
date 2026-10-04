@@ -65,9 +65,9 @@ public:
     ~ModernDial() override {stopTimer();}
     bool isAutoValue() const {return infinity&&getValue()>=getMaximum();}
     float valueTextHeight(const juce::String& value) const {
-        const float preferred=compact?17.f:(title=="Influence"?29.f:25.f);
-        if(!compact)return preferred;
-        const float diameter=float(juce::jmin(getWidth(),getHeight()))*.66f;
+        const float scale=float(getWidth())/(compact?132.f:240.f);
+        const float preferred=juce::jmax(11.f,(compact?14.f:22.f)*scale);
+        const float diameter=(compact?60.f:112.f)*scale;
         const float width=juce::GlyphArrangement::getStringWidth(pocketFont(preferred,true),value);
         return juce::jlimit(11.f,preferred,preferred*diameter/juce::jmax(1.f,width+1.f));
     }
@@ -76,13 +76,22 @@ public:
     void mouseDown(const juce::MouseEvent& e) override {juce::Slider::mouseDown(e);animate(1);}
     void mouseUp(const juce::MouseEvent& e) override {juce::Slider::mouseUp(e);animate(isMouseOver()?.65f:0);}
     void paint(juce::Graphics&) override;
+    juce::String displayedValue() const {
+        if(unit=="balance")return juce::String(juce::roundToInt(std::abs(getValue())*100.))+"%";
+        if(unit=="dB")return juce::String(getValue(),2);
+        if(isAutoValue()&&unit=="ms")return "AUTO";
+        return juce::String(getValue(),title=="Influence"?1:0)+(unit=="%"?"%":" ms");
+    }
+    juce::String balanceLabel() const {return getValue()<-.0001?"MID":(getValue()>.0001?"SIDE":"MS");}
     void setMeter(float reduction,float signal){if(std::abs(gr-reduction)>.001f||std::abs(activity-signal)>.005f){gr=reduction;activity=signal;repaint();}}
     void setDurationMode(bool relative){unit=relative?"%":"ms";subtitle=relative?"Key length":"Legacy length";repaint();}
 private:
     PocketLook& look;
     juce::String title,subtitle,unit;
     bool infinity,compact;
-    juce::Image body;
+    juce::Image body,ringImage;
+    std::unique_ptr<juce::Drawable> heading;
+    double ringValue=std::numeric_limits<double>::quiet_NaN();
     PocketTheme bodyTheme=PocketTheme::Neon;
     float bodyScale=0,gr=0,activity=0,emphasis=0,targetEmphasis=0;
     void animate(float target){targetEmphasis=target;startTimerHz(60);}
@@ -119,7 +128,7 @@ private:
     ModernDial duration{look,"Duration","Sidechain length","ms",0xff32d4cb,true,false,false,"AUTO"};
     ModernDial outputGain{look,"Output","dB","dB",0xfff1e84b,false,false,true};
     ResettableRangeSlider sidechainRange,processingRange;
-    juce::Slider midSide;
+    ModernDial midSide{look,"M/S Balance","","balance",0,false,false,true};
     juce::TextButton settingsButton{"settings"},bypassButton{"power"},freezeButton{"freeze"};
     std::unique_ptr<SliderAttachment> influenceAttach,durationAttach,outputAttach,msAttach;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttach;

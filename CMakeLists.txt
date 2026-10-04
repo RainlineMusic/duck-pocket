@@ -58,7 +58,7 @@ foreach(test_name numerical relative_duration null)
  add_executable(Pocket_${test_name} Tests/${test_name}_test.cpp)
  add_test(NAME Pocket_${test_name} COMMAND Pocket_${test_name})
 endforeach()
-juce_add_binary_data(DuckAssets SOURCES Assets/Fonts/IBMPlexSans-Regular.ttf Assets/Fonts/IBMPlexSans-Medium.ttf Assets/Fonts/IBMPlexMono-Regular.ttf)
+juce_add_binary_data(DuckAssets SOURCES Assets/Fonts/Inter-Regular.ttf Assets/Fonts/Inter-Medium.ttf Assets/Designer/DialLarge.png Assets/Designer/DialSmall.png Assets/Designer/TitleInfluence.svg Assets/Designer/TitleDuration.svg Assets/Designer/TitleOutput.svg Assets/Designer/TitleMS.svg Assets/Designer/Logo.svg)
 set_target_properties(DuckAssets PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 target_link_libraries(DuckPocket PUBLIC DuckAssets)
 if(DUCK_BUILD_UI_TESTS)
@@ -87,7 +87,7 @@ foreach(format VST3 AAX)
  if(TARGET DuckPocket_${format})
   add_custom_command(TARGET DuckPocket_${format} POST_BUILD
    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:DuckPocket_${format}>/../Resources"
-   COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Fonts/OFL.txt" "$<TARGET_FILE_DIR:DuckPocket_${format}>/../Resources/IBM-Plex-OFL.txt"
+   COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Fonts/Inter-OFL.txt" "$<TARGET_FILE_DIR:DuckPocket_${format}>/../Resources/Inter-OFL.txt"
    VERBATIM)
  endif()
 endforeach()

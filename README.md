@@ -36,7 +36,7 @@ This is experimental software. Back up old projects and plug-ins before replacem
 
 ## Graphics
 
-Four semantic themes, embedded IBM Plex Sans/Mono (OFL license in `Assets/Fonts`), cached physical-scale materials and dial bodies. Key/filter use one data colour; output/reduction use the second. Duration and M/S are neutral. Freeze remains available. Chrome is rebuilt only on theme, size/DPI or graph-window changes, with resize coalescing. No idle ambient animations.
+Four semantic themes, embedded Inter Regular/Medium (OFL license in `Assets/Fonts/Inter-OFL.txt`), cached physical-scale materials and dial bodies. Key/filter use one data colour; output/reduction use the second. Duration and M/S are neutral. Freeze remains available. Chrome is rebuilt only on theme, size/DPI or graph-window changes, with resize coalescing. No idle ambient animations.
 
 Optional OpenGL on macOS: configure with `-DDUCK_ENABLE_OPENGL=ON`, then Settings → OpenGL (experimental). A single editor context renders a half-resolution emissive layer with separable blur and additive composition. Continuous repainting is disabled, static GPU textures are retained, and creation/shader failure returns to the native renderer. Context detach precedes child destruction. **Runtime default is off until Pro Tools/AAX profiling and host testing are complete.** OpenGL is deprecated on macOS ([Apple](https://developer.apple.com/documentation/appkit/nsopenglcontext)). Windows uses JUCE 8's native Direct2D renderer: the OpenGL setting is unavailable there because a hosted WGL peer crashed intermittently before the renderer could apply its fallback. Enabling GL on macOS is not a verified performance improvement.
 
@@ -45,3 +45,9 @@ Optional OpenGL on macOS: configure with `-DDUCK_ENABLE_OPENGL=ON`, then Setting
 Target platforms: **macOS universal arm64/x86_64 and Windows x64**, VST3/AAX. No Linux packages are delivered. `-DDUCK_BUILD_UI_TESTS=ON` builds processor integration tests and the real JUCE screenshot utility. Run `ctest --test-dir build -C Release --output-on-failure`. Run `PocketUITest <output-directory>` for software snapshots of all themes, three signal states, 1x/2x. Use `PocketUITest --gl-smoke` on a supported desktop for a native context, signal-driven GPU blur and 100 peer attach/detach cycles. CI records this experimental probe separately; a hosted runner may have no usable GPU. The probe does not measure Pro Tools performance.
 
 For Debug instrumentation use `-DDUCK_SANITIZER=address`, `undefined`, or `thread` (Clang/GCC); MSVC supports the address option. GUI/host sanitizer coverage must be run on the target OS. See `IMPLEMENTATION-REPORT.md` for actual completed checks, known limitations and the remaining host/performance matrix. Developer AAX artifacts are not a production PACE-signed release.
+
+### Designer interface
+
+The supplied SVG is the source for the Dark theme dial material, curved outline headings and logo. Controls and traces are live JUCE components, not a screenshot overlay. The 800 × 865 layout scales with window width; previous widths are retained within 800–1500, while previous height/expanded-panel state is ignored. M/S is now a rotary control: centre **0% / MS**, left **0–100% / MID**, right **0–100% / SIDE**. The existing `msBalance` parameter remains −1…+1; double-click resets to zero. Settings, power/bypass, graph freeze, range-handle reset, themes and graph windows are preserved.
+
+Ring bloom is cached by value, theme, size and physical scale and works with native rendering, including Windows. Experimental OpenGL is optional on macOS, off by default; Windows uses the native renderer. This visual update does not modify DSP or parameter state.
