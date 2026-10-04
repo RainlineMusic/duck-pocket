@@ -1,5 +1,31 @@
 #pragma once
 #include <JuceHeader.h>
+// GUI-only history, shared by the software and GPU emission paths. Repaints
+// at the same audio time reuse the completed frame instead of dropping its tail.
+class PocketPhosphorTrail {
+public:
+    void reset(){trail.clear(trail.getBounds());lastTime=-1;}
+    void apply(juce::Image& emission,double time,double window){
+        if(!emission.isValid()||!std::isfinite(time)||!std::isfinite(window)||window<=0){reset();return;}
+        if(trail.getWidth()!=emission.getWidth()||trail.getHeight()!=emission.getHeight()){
+            trail=make(emission.getWidth(),emission.getHeight());shifted=make(emission.getWidth(),emission.getHeight());lastTime=-1;
+        }
+        if(time<lastTime)reset();
+        if(lastTime>=0&&time==lastTime){
+            emission.clear(emission.getBounds());juce::Graphics g(emission);g.drawImageAt(trail,0,0);return;
+        }
+        if(lastTime>=0){
+            const double dt=juce::jlimit(0.,window,time-lastTime);shifted.clear(shifted.getBounds());
+            {juce::Graphics g(shifted);g.setOpacity(float(std::exp(-dt/.12)));g.drawImageTransformed(trail,juce::AffineTransform::translation(-float(dt/window*trail.getWidth()),0));}
+            juce::Graphics g(emission);g.setOpacity(.22f);g.drawImageAt(shifted,0,0);
+        }
+        trail.clear(trail.getBounds());{juce::Graphics g(trail);g.drawImageAt(emission,0,0);}lastTime=time;
+    }
+private:
+    juce::Image trail,shifted;
+    double lastTime=-1;
+    static juce::Image make(int w,int h){return juce::Image(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());}
+};
 // GUI-only reusable images. Blur touches premultiplied colour bytes, so transparent
 // pixels cannot introduce dark fringes. Image buffers are retained after size/DPI warm-up.
 class PocketSoftwareGlow {
@@ -10,19 +36,14 @@ public:
         ++prepares;
         if(core.getWidth()!=width||core.getHeight()!=height){
             core=make(width,height);const int w=juce::jmax(1,width/4),h=juce::jmax(1,height/4);
-            emission=make(w,h);horizontal=make(w,h);soft=make(w,h);trail=make(w,h);shifted=make(w,h);upscaled=make(width,height);composite=make(width,height);lastTime=-1;
+            emission=make(w,h);horizontal=make(w,h);soft=make(w,h);upscaled=make(width,height);composite=make(width,height);phosphorTrail.reset();
         }
         core.clear(core.getBounds());emission.clear(emission.getBounds());
     }
-    void reset(){trail.clear(trail.getBounds());lastTime=-1;}
+    void reset(){phosphorTrail.reset();}
     void paint(juce::Graphics& g,const juce::Image& background,juce::Rectangle<float> bounds,float intensity,double time,double window,bool phosphor){
         if(intensity<=.0001f||!background.isValid()){g.drawImage(core,bounds);return;}
-        if(phosphor&&lastTime>=0&&time>lastTime){
-            const double dt=juce::jlimit(0.,window,time-lastTime);shifted.clear(shifted.getBounds());
-            juce::Graphics sg(shifted);sg.setOpacity(float(std::exp(-dt/.12)));sg.drawImageTransformed(trail,juce::AffineTransform::translation(-float(dt/window*trail.getWidth()),0));
-            juce::Graphics eg(emission);eg.setOpacity(.22f);eg.drawImageAt(shifted,0,0);
-        }
-        if(phosphor&&time!=lastTime){trail.clear(trail.getBounds());juce::Graphics tg(trail);tg.drawImageAt(emission,0,0);lastTime=time;}
+        if(phosphor)phosphorTrail.apply(emission,time,window);
         const int step=intensity>.16f?2:1;blur(emission,horizontal,true,step);blur(horizontal,soft,false,step);
         upscaled.clear(upscaled.getBounds());{juce::Graphics ug(upscaled);ug.setImageResamplingQuality(juce::Graphics::highResamplingQuality);ug.drawImage(soft,upscaled.getBounds().toFloat());}
         // Additive RGB over the cached glass; crisp cores are composited last.
@@ -41,7 +62,7 @@ public:
         for(int y=0;y<src.height;++y)for(int x=0;x<src.width;++x){auto* d=dst.getPixelPointer(x,y);for(int channel=0;channel<4;++channel){int value=0;for(int k=-3;k<=3;++k){const auto* pixel=src.getPixelPointer(juce::jlimit(0,src.width-1,x+(horizontalPass?k*step:0)),juce::jlimit(0,src.height-1,y+(horizontalPass?0:k*step)));value+=pixel[channel]*weights[k+3];}d[channel]=juce::uint8((value+32)/64);}}
     }
 private:
-    juce::Image horizontal,soft,trail,shifted,upscaled,composite;
-    double lastTime=-1;
+    juce::Image horizontal,soft,upscaled,composite;
+    PocketPhosphorTrail phosphorTrail;
     static juce::Image make(int w,int h){return juce::Image(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());}
 };
