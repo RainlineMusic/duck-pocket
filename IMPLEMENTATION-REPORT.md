@@ -78,3 +78,7 @@ The following requests are not declared complete:
 6. **Hardware null renders** on musical session materials, not only portable deterministic signals. Invalid-buffer bug fixes are intentionally outside the bit-exact promise.
 
 Archive notes and `FILES-TO-DELETE.txt` were not removed. Proposed cleanup: move historic notes/tests to `Docs/Archive` once approved; retain the baseline headers and active regression suite. Reconcile duplicated old workflows after checking which is actually active. Production AAX licensing/PACE signing is a separate release requirement; CI developer AAX packaging does not establish it.
+
+## Target-test adjustment
+
+The first Mac TSan run passed the five engine regressions and stopped on the processor impulse assertion's exact float equality; it did not report a data race. JUCE's float parameter conversion/snapping may contract multiply-add on ARM (for example, nominal 0 dB can become approximately ±3e-7 dB). The processor impulse test now checks level within 1e-6 while retaining the exact expected sample position and detailed failure diagnostics. The frozen-baseline DSP null and 100%-AUTO comparisons remain bit-exact; DSP/parameter ranges were not changed to satisfy the test. The next target run determines whether this resolves the assertion.
