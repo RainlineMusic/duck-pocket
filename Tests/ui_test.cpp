@@ -10,6 +10,7 @@ struct DuckUiTestAccess {
  static std::uint64_t caches(DuckPocketAudioProcessorEditor& e){return e.chromeBuildCount;}
 #if DUCK_ENABLE_OPENGL
  static void gl(DuckPocketAudioProcessorEditor& e,bool enabled){e.setOpenGL(enabled,false);}
+ static void simulateFailedGl(DuckPocketAudioProcessorEditor& e){e.setOpaque(false);e.glowRenderer=std::make_unique<PocketGlowRenderer>();e.glowRenderer->ready.store(false);e.glowRenderer->presented.store(true);e.glowRenderer->failed.store(true);e.signalPeak=e.currentReduction=0;}
  static bool ready(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->ready.load();}
 #endif
 };
@@ -34,6 +35,7 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI init;const juce::
  e->createComponentSnapshot({42,135,200,100});auto after=DuckUiTestAccess::plots(*e);check(after[0]==before[0]+1&&after[1]==before[1],"gain-only clip does not rasterise oscilloscope");
 
 #if DUCK_ENABLE_OPENGL
+ DuckUiTestAccess::simulateFailedGl(*e);auto fallback=e->createComponentSnapshot(e->getLocalBounds());check(fallback.getPixelAt(300,420).getAlpha()==255,"failed GL leaves opaque software glass");DuckUiTestAccess::gl(*e,false);
  if(native){DuckUiTestAccess::gl(*e,true);pump(400);DuckUiTestAccess::tick(*e);pump(100);std::cout<<"GL created="<<DuckUiTestAccess::ready(*e)<<'\n';
  check(DuckUiTestAccess::ready(*e),"GL context/shaders on local Mesa");
  for(int i=0;i<5;++i){DuckUiTestAccess::gl(*e,false);DuckUiTestAccess::gl(*e,true);pump(100);}

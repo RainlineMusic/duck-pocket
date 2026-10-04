@@ -368,7 +368,7 @@ void DuckPocketAudioProcessorEditor::paintChrome(juce::Graphics& g){
     g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
 #if DUCK_ENABLE_OPENGL
     juce::Graphics::ScopedSaveState clip(g);
-    if(glowRenderer&&glowRenderer->presented.load()&&!capturingBlur&&bypassMix<.5f){
+    if(glowRenderer&&glowRenderer->ready.load()&&glowRenderer->presented.load()&&!capturingBlur&&bypassMix<.5f){
         // Component painting overlays OpenGL. Transparent plot apertures expose
         // the GPU-rendered glass/grid/glow; crisp CPU cores remain above it.
         g.excludeClipRegion(scaled(42,135,570,137));g.excludeClipRegion(scaled(42,375,570,137));
