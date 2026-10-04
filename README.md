@@ -51,3 +51,11 @@ For Debug instrumentation use `-DDUCK_SANITIZER=address`, `undefined`, or `threa
 The supplied SVG is the source for the Dark theme dial material, curved outline headings and logo. Controls and traces are live JUCE components, not a screenshot overlay. The 800 × 865 layout scales with window width; previous widths are retained within 800–1500, while previous height/expanded-panel state is ignored. M/S is now a rotary control: centre **0% / MS**, left **0–100% / MID**, right **0–100% / SIDE**. The existing `msBalance` parameter remains −1…+1; double-click resets to zero. Settings, power/bypass, graph freeze, range-handle reset, themes and graph windows are preserved.
 
 Ring bloom is cached by value, theme, size and physical scale and works with native rendering, including Windows. Experimental OpenGL is optional on macOS, off by default; Windows uses the native renderer. This visual update does not modify DSP or parameter state.
+
+### Compact luminous interface update
+
+Active themes: Solid Dark (default), Neon and Amber. The removed White preference migrates to Dark. Fresh windows default to width 615 (approximately 1/1.3 of the designer base), with a 400 minimum (half the old 800); height follows the same proportions. Open filters use aspect 800:885, collapsed aspect 800:772. The restored arrow hides both Sidechain Filter and Processing Range, preserving width and parameter values. Previously saved session widths within bounds remain valid.
+
+OpenGL is compiled by default and enabled by default for macOS native editors. Runtime choice/failure rollback is saved under a new preference key; an explicit OFF remains OFF. Windows runtime GL stays disabled because of the previously reproduced WGL native-peer crash; brighter cached glow is also available through native rendering. Fresh processors already default to Percentage Duration at 100% = AUTO. Old ms-mode session states retain their saved mode.
+
+Graph beds use cached dark recesses and inner bevels. Curve cores and additive bloom are brighter toward NOW and fade toward older data. Output values rounding to zero show 0.00, never -0.00. Freeze/resume cut-offs are discarded on host reset, and GPU publications request their own presentation so paused theme changes do not wait for audio.

@@ -1,3 +1,15 @@
+# Compact / luminous refinement
+
+Latest user revision supersedes earlier fixed-open/4-theme rules. Dark default, Neon/Amber retained, White removed and migrated to Dark. OpenGL compiled by default; macOS runtime ON for fresh native editors, Windows runtime OFF for the reproduced WGL fault. Percentage Duration is already the processor default; old saved states remain intact.
+
+Base width 615, min width 400; designer coordinates remain 800 units. Open height 885; collapsed height 772. Arrow occupies y745–769, two range sliders move down 20 units; freeze now lives in the header at x678. New filter preference is local UI state and does not alter parameters. Native small text scales with the requested proportional shrinking.
+
+Dark data colours: KEY #D1BA8E, OUT/GR #C1D3F0. Cached ring bloom has broad 11-unit and tighter 4-unit passes. Recessed graph strips add a top inner shadow and lower-edge bevel; curves fade from low alpha at the left to full brightness at NOW, with increased software/GPU additive intensity. No continuous idle animation.
+
+Bug reproduction: freeze/resume establishes a cut-off on the old sample timeline; a host reset restarts sample time at zero. Keeping that cut-off suppresses new traces until the old timestamp is reached. Reset now clears both cut-offs. GPU component painting publishes after renderOpenGL; publication now requests another presentation, fixing stale GPU material/colour without new audio. Output display normalises values that round to zero, without changing the host parameter.
+
+---
+
 # Актуальный макет дизайнера — октябрь 2026
 
 Референс: `Assets/Designer/Reference.svg`, предоставленный пользователем. База 800 × 865, Inter Regular/Medium. Историческая разведка сохранена ниже.

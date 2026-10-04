@@ -1,3 +1,13 @@
+# Compact luminous refinement — current
+
+Three separate UI bug commits: timeline cut-offs after reset; paused GPU presentation; negative-zero Output formatting. No DSP/processor/parameter code changed. UI regression reproduces freeze/resume + host reset followed by short fresh audio and checks that the scope actually paints immediately. Native GPU probe checks a new chrome revision is presented after a paused theme change.
+
+White is removed, Dark is default, macOS native GL is ON by default with rollback, Windows stays on native rendering for stability. Fresh Percentage Duration is already true; legacy session migration is preserved. Width defaults 615, min 400; arrow collapses both bottom filters without changing values. Open aspect 800:885, closed 800:772. Material/text/ring/plots keep the proportional layout.
+
+Three themes × three signal states × 1×/2× captured, plus compact 400/615 previews. Brighter cores and bloom fade into the left-side age haze. Cached darker beds / inner bevels give recessed depth. Tests and native target CI are attached to the PR for this revision. Host Pro Tools/AAX manual and actual 1/8/32-instance profiling remain open; enabling GL on macOS does not assert that those unmeasured gates passed.
+
+---
+
 # Designer UI update
 
 This revision changes only editor/rendering assets, typography and UI tests; DSP and processor sources are unchanged. Exact user-supplied dial material/headings/logo replace the earlier design. Live graphs retain the existing trace/bucketing system, now across the full width. The M/S control becomes rotary while keeping `msBalance` ID/range/state and displaying directional magnitude (0% MS / 100% MID / 100% SIDE). Default Duration displays 100% with AUTO beneath.

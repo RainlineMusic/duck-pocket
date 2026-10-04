@@ -13,7 +13,7 @@ public:
     bool isDark() const{return theme!=PocketTheme::SolidWhite;}
     bool isNeon() const{return theme==PocketTheme::Neon;}
     bool isAmber() const{return theme==PocketTheme::Amber;}
-    bool hasGlow() const{return isNeon()||isAmber();}
+    bool hasGlow() const{return true;}
     juce::Colour pick(juce::uint32 neon,juce::uint32 dark,juce::uint32 white) const;
     juce::Colour ink() const;
     juce::Colour muted() const;
@@ -66,10 +66,10 @@ public:
     bool isAutoValue() const {return infinity&&getValue()>=getMaximum();}
     float valueTextHeight(const juce::String& value) const {
         const float scale=float(getWidth())/(compact?132.f:240.f);
-        const float preferred=juce::jmax(11.f,(compact?14.f:22.f)*scale);
+        const float preferred=(compact?14.f:22.f)*scale;
         const float diameter=(compact?60.f:112.f)*scale;
-        const float width=juce::GlyphArrangement::getStringWidth(pocketFont(preferred,true),value);
-        return juce::jlimit(11.f,preferred,preferred*diameter/juce::jmax(1.f,width+1.f));
+        const float width=juce::GlyphArrangement::getStringWidth(pocketFont(compact?14.f:22.f,true),value)*scale;
+        return juce::jlimit(6.f*scale,preferred,preferred*diameter/juce::jmax(1.f,width+1.f));
     }
     void mouseEnter(const juce::MouseEvent& e) override {juce::Slider::mouseEnter(e);animate(.65f);}
     void mouseExit(const juce::MouseEvent& e) override {juce::Slider::mouseExit(e);animate(0);}
@@ -129,7 +129,7 @@ private:
     ModernDial outputGain{look,"Output","dB","dB",0xfff1e84b,false,false,true};
     ResettableRangeSlider sidechainRange,processingRange;
     ModernDial midSide{look,"M/S Balance","","balance",0,false,false,true};
-    juce::TextButton settingsButton{"settings"},bypassButton{"power"},freezeButton{"freeze"};
+    juce::TextButton settingsButton{"settings"},bypassButton{"power"},freezeButton{"freeze"},expandButton{"expand"};
     std::unique_ptr<SliderAttachment> influenceAttach,durationAttach,outputAttach,msAttach;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttach;
     std::unique_ptr<juce::ParameterAttachment> lowAttach,highAttach,processLowAttach,processHighAttach;
@@ -144,7 +144,9 @@ private:
     int summaryCursor=0,summaryFilled=0;
     long long summaryBin=-1;
     std::vector<PocketTrace> frozenGain,frozenSummary;
-    bool gainFrozen=false,scopeFrozen=false;
+    bool gainFrozen=false,scopeFrozen=false,filtersExpanded=true;
+    float designHeight() const{return filtersExpanded?885.f:772.f;}
+    void setFiltersExpanded(bool expanded,bool persist=true);
     double gainResume=0,scopeResume=0;
     bool ready=false,rangeGesture=false,processRangeGesture=false,capturingBlur=false,bypassTarget=false;
     double resizeStamp=0,nextFrameMs=0; // nextFrameMs = time of the last rendered frame
