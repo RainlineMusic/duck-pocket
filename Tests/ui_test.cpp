@@ -13,6 +13,7 @@ struct DuckUiTestAccess {
  }
  static void freeze(DuckPocketAudioProcessorEditor& e){e.freezeButton.triggerClick();}
  static bool frozen(DuckPocketAudioProcessorEditor& e){return e.gainFrozen&&e.scopeFrozen;}
+ static bool resumeReset(DuckPocketAudioProcessorEditor& e){return e.gainResume==0&&e.scopeResume==0;}
  static void tick(DuckPocketAudioProcessorEditor& e){e.frameTick();}
  static void settle(DuckPocketAudioProcessorEditor& e){e.resizeStamp=0;}
  static std::array<std::uint64_t,2> plots(DuckPocketAudioProcessorEditor& e){return {e.softwarePlots[0].prepares,e.softwarePlots[1].prepares};}
@@ -109,6 +110,13 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
   check(balance.balanceLabel()==(value<0?"MID":(value>0?"SIDE":"MS")),"M/S direction display");
  }
  balance.setValue(0,juce::sendNotificationSync);check(std::abs(p.parameters.getRawParameterValue("msBalance")->load())<.00001f,"M/S gesture returns parameter to neutral");
+ // Reproduce host stop/reset after a freeze/resume cut-off at >1 second.
+ juce::AudioBuffer<float> resumed(4,64);juce::MidiBuffer resumeMidi;
+ for(int i=0;i<1200;++i){resumed.clear();p.processBlock(resumed,resumeMidi);}DuckUiTestAccess::tick(*e);
+ DuckUiTestAccess::freeze(*e);pump(10);DuckUiTestAccess::freeze(*e);pump(10);
+ p.reset();DuckUiTestAccess::tick(*e);check(DuckUiTestAccess::resumeReset(*e),"host timeline reset discards the previous freeze cut-off");
+ for(int block=0;block<150;++block){for(int sample=0;sample<64;++sample){const float v=.3f*std::sin(float(block*64+sample)*.01f);for(int channel=0;channel<4;++channel)resumed.setSample(channel,sample,v);}p.processBlock(resumed,resumeMidi);}DuckUiTestAccess::tick(*e);
+ e->createComponentSnapshot(e->getLocalBounds());
  const PocketTheme themes[]{PocketTheme::Neon,PocketTheme::SolidDark,PocketTheme::SolidWhite,PocketTheme::Amber};const char* names[]{"neon","dark","white","amber"};
  juce::MidiBuffer midi;juce::AudioBuffer<float> b(4,64);
  for(int ti=0;ti<4;++ti)for(int state=0;state<3;++state){p.reset();DuckUiTestAccess::tick(*e);DuckUiTestAccess::theme(*e,themes[ti]);

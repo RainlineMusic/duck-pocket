@@ -511,7 +511,7 @@ void DuckPocketAudioProcessorEditor::frameTick(){
     syncDurationMode();
     if(!chromeValid&&resizeStamp>0&&juce::Time::getMillisecondCounterHiRes()-resizeStamp>100)repaint();
     const auto epoch=audioProcessor.traceGeneration.load(std::memory_order_relaxed);
-    if(epoch!=traceGeneration){traceGeneration=epoch;cursor=filled=summaryCursor=summaryFilled=0;summaryBin=-1;displayTime=lastClock=lastLatest=gapMax=0;lastPaintedTime=-1;lastVisibleSignalTime=-1;signalPeak=currentReduction=0;for(auto& layer:softwarePlots)layer.reset();
+    if(epoch!=traceGeneration){traceGeneration=epoch;cursor=filled=summaryCursor=summaryFilled=0;summaryBin=-1;displayTime=lastClock=lastLatest=gapMax=0;gainResume=scopeResume=0;lastPaintedTime=-1;lastVisibleSignalTime=-1;signalPeak=currentReduction=0;for(auto& layer:softwarePlots)layer.reset();
 #if DUCK_ENABLE_OPENGL
         for(auto& phosphor:gpuPhosphor)phosphor.reset();
 #endif
