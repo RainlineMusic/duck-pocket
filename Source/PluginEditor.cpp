@@ -80,7 +80,7 @@ void ModernDial::paint(juce::Graphics& g){
     const auto c=getLocalBounds().toFloat().getCentre();const float r=size*(compact?.33f:.355f),ring=r+size*.047f;
     const auto scale=g.getInternalContext().getPhysicalPixelScaleFactor();const int pw=juce::jmax(1,juce::roundToInt(getWidth()*scale)),ph=juce::jmax(1,juce::roundToInt(getHeight()*scale));
     if(!body.isValid()||body.getWidth()!=pw||body.getHeight()!=ph||bodyTheme!=look.theme||std::abs(bodyScale-scale)>.001f){
-        body=juce::Image(juce::Image::ARGB,pw,ph,true);bodyTheme=look.theme;bodyScale=scale;juce::Graphics bg(body);bg.addTransform(juce::AffineTransform::scale(scale));
+        body=juce::Image(juce::Image::ARGB,pw,ph,true,juce::SoftwareImageType());bodyTheme=look.theme;bodyScale=scale;juce::Graphics bg(body);bg.addTransform(juce::AffineTransform::scale(scale));
         auto face=juce::Rectangle<float>(2*r,2*r).withCentre(c);
         juce::Path shadow;shadow.addEllipse(face);juce::DropShadow(juce::Colours::black.withAlpha(.28f),5,{1,3}).drawForPath(bg,shadow);
         bg.setGradientFill(juce::ColourGradient(t.raised.brighter(.12f),c.x-r,c.y-r,t.glass,c.x+r,c.y+r,false));bg.fillEllipse(face);
@@ -338,7 +338,7 @@ void DuckPocketAudioProcessorEditor::paintChrome(juce::Graphics& g){
     const int w=juce::jmax(1,juce::roundToInt(getWidth()*physicalScale)),h=juce::jmax(1,juce::roundToInt(getHeight()*physicalScale));
     const bool resizing=resizeStamp>0&&juce::Time::getMillisecondCounterHiRes()-resizeStamp<100;
     if((!chromeValid||!chrome.isValid()||chrome.getWidth()!=w||chrome.getHeight()!=h||std::abs(chromeScale-physicalScale)>.001f)&&(!resizing||!chrome.isValid())){
-        ++chromeBuildCount;chrome=juce::Image(juce::Image::ARGB,w,h,true);chromeScale=physicalScale;juce::Graphics cg(chrome);cg.addTransform(juce::AffineTransform::scale(physicalScale*float(getWidth())/960.f));const auto t=look.tokens();
+        ++chromeBuildCount;chrome=juce::Image(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());chromeScale=physicalScale;juce::Graphics cg(chrome);cg.addTransform(juce::AffineTransform::scale(physicalScale*float(getWidth())/960.f));const auto t=look.tokens();
         cg.setGradientFill(juce::ColourGradient(t.chassis.brighter(.045f),0,0,t.chassis,960,760,false));cg.fillRect(0,0,960,760);
         // Original deterministic texture, cached once; never an ambient animation.
         juce::Random noise(0xD0C);for(int i=0;i<6500;++i){cg.setColour((i%2?juce::Colours::white:juce::Colours::black).withAlpha(.02f));cg.fillRect(float(noise.nextInt(960)),float(noise.nextInt(760)),1.f,1.f);}
