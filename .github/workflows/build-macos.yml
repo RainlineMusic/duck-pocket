@@ -226,13 +226,16 @@ jobs:
         run: |
           $out = "$PWD/native-gl-windows.stdout.log"
           $err = "$PWD/native-gl-windows.stderr.log"
-          $probe = Start-Process -FilePath "./build/PocketUITest_artefacts/Release/PocketUITest.exe" -ArgumentList '--gl-smoke' -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          'GL_PROBE_WRAPPER_START' | Set-Content native-gl-windows.log
+          $probe = Start-Process -FilePath "./build/PocketUITest_artefacts/Release/PocketUITest.exe" -ArgumentList '--gl-smoke' -WorkingDirectory "$PWD" -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          if ($null -eq $probe) { 'PROCESS_START_FAILED' | Add-Content native-gl-windows.log; exit 1 }
           if (-not $probe.WaitForExit(300000)) {
             Stop-Process -Id $probe.Id -Force
-            'TIMEOUT: native OpenGL probe exceeded 300 seconds' | Tee-Object -FilePath native-gl-windows.log
+            'TIMEOUT: native OpenGL probe exceeded 300 seconds' | Add-Content native-gl-windows.log
             exit 124
           }
-          Get-Content $out, $err | Tee-Object -FilePath native-gl-windows.log
+          Get-Content $out, $err | Tee-Object -FilePath native-gl-windows.log -Append
+          "GL_PROBE_EXIT_CODE=$($probe.ExitCode)" | Tee-Object -FilePath native-gl-windows.log -Append
           if ($probe.ExitCode -ne 0) { exit $probe.ExitCode }
 
       - uses: actions/upload-artifact@v4
