@@ -5,6 +5,7 @@ struct DuckUiTestAccess {
  static void theme(DuckPocketAudioProcessorEditor& e,PocketTheme t){e.setTheme(t,false);}
  static void tick(DuckPocketAudioProcessorEditor& e){e.frameTick();}
  static void settle(DuckPocketAudioProcessorEditor& e){e.resizeStamp=0;}
+ static std::array<std::uint64_t,2> plots(DuckPocketAudioProcessorEditor& e){return {e.softwarePlots[0].prepares,e.softwarePlots[1].prepares};}
  static std::uint64_t paints(DuckPocketAudioProcessorEditor& e){return e.paintCount;}
  static std::uint64_t caches(DuckPocketAudioProcessorEditor& e){return e.chromeBuildCount;}
 #if DUCK_ENABLE_OPENGL
@@ -29,6 +30,9 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI init;const juce::
    std::cout<<names[ti]<<" state="<<state<<" DPI="<<scale<<" capture_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';}
  }
  e->createComponentSnapshot(e->getLocalBounds());auto cached=DuckUiTestAccess::caches(*e);auto warm=juce::Time::getMillisecondCounterHiRes();for(int i=0;i<20;++i){e->createComponentSnapshot(e->getLocalBounds());}std::cout<<"warm_snapshot_ms="<<(juce::Time::getMillisecondCounterHiRes()-warm)/20.<<'\n';check(DuckUiTestAccess::caches(*e)==cached,"chrome reused when unchanged");
+ auto before= DuckUiTestAccess::plots(*e);e->createComponentSnapshot({700,100,180,160});check(DuckUiTestAccess::plots(*e)==before,"knob-only clip never rasterises graphs");
+ e->createComponentSnapshot({42,135,200,100});auto after=DuckUiTestAccess::plots(*e);check(after[0]==before[0]+1&&after[1]==before[1],"gain-only clip does not rasterise oscilloscope");
+
 #if DUCK_ENABLE_OPENGL
  if(native){DuckUiTestAccess::gl(*e,true);pump(400);DuckUiTestAccess::tick(*e);pump(100);std::cout<<"GL created="<<DuckUiTestAccess::ready(*e)<<'\n';
  check(DuckUiTestAccess::ready(*e),"GL context/shaders on local Mesa");

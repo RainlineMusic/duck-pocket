@@ -5,7 +5,9 @@
 class PocketSoftwareGlow {
 public:
     juce::Image core,emission;
+    std::uint64_t prepares=0;
     void prepare(int width,int height){
+        ++prepares;
         if(core.getWidth()!=width||core.getHeight()!=height){
             core=make(width,height);const int w=juce::jmax(1,width/4),h=juce::jmax(1,height/4);
             emission=make(w,h);horizontal=make(w,h);soft=make(w,h);trail=make(w,h);shifted=make(w,h);upscaled=make(width,height);composite=make(width,height);lastTime=-1;
