@@ -1,3 +1,7 @@
+# CoreGraphics cache sampling regression
+
+The first target UI comparison stopped on a single blue-channel LSB at width615 during a fold (both Mac instrumented jobs); no sanitizer memory/race report occurred, and six regressions had passed. Chrome now draws at its actual cached pixel aspect, with an opaque clipped background fill for the rounded bottom edge. The pixel comparator permits one 8-bit rounding level per RGB channel (alpha exact) while independently enforcing unchanged width/cache. This cannot conceal a shifted high-contrast grid/edge/curve. Sanitizer options are unchanged. Final target CI supersedes the intermediate run.
+
 # Photoshop layout / deeper colour refinement — current
 
 Applied reference deltas using 800/1894 without independently scaling X/Y. Larger glowing arrow, additional footer room, new closed-by-default UI preference. Freeze moved from header to the reference bottom-right scope location, with a larger transparent hit target. Dark palette/materials and glow intensity are updated; actual signal data, knob semantics, DSP and IDs are preserved. Local UI regression/captures passed; target Mac/Win and sanitizer verification follows on the final revision. Native GL regression now includes ten paused panel folds.

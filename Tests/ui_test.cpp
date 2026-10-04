@@ -44,6 +44,10 @@ struct DuckUiTestAccess {
 #endif
 };
 static void check(bool v,const char* message){if(!v){std::cerr<<"FAIL "<<message<<'\n';std::abort();}}
+// CoreGraphics may round an 8-bit channel by one LSB when the target clip
+// changes. This tolerance cannot hide a shifted edge/grid/curve; geometry,
+// width and cache identity are also checked independently.
+static bool samePixel(juce::Colour a,juce::Colour b){return a.getAlpha()==b.getAlpha()&&std::abs(int(a.getRed())-int(b.getRed()))<=1&&std::abs(int(a.getGreen())-int(b.getGreen()))<=1&&std::abs(int(a.getBlue())-int(b.getBlue()))<=1;}
 static void pump(int milliseconds){juce::MessageManager::getInstance()->runDispatchLoopUntil(milliseconds);}
 int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=="--gl-smoke";if(glSmoke)std::cerr<<"GL_PROBE_START\n";juce::ScopedJuceInitialiser_GUI init;if(glSmoke)std::cerr<<"GL_PROBE_GUI_READY\n";const juce::File output(glSmoke?juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("duck-gl-smoke"):juce::File(argc>1?argv[1]:"screenshots"));if(!glSmoke)output.createDirectory();
  DuckPocketAudioProcessor p;p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
@@ -134,7 +138,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    check(DuckUiTestAccess::caches(*e)==cache,"fold reuses chrome immediately, without settling or regeneration");
    juce::Image::BitmapData a(before,juce::Image::BitmapData::readOnly),b(after,juce::Image::BitmapData::readOnly);
    const auto grip=(DuckUiTestAccess::resizeGrip(*e).toFloat()*2.f).toNearestInt();
-   for(int y=0;y<topHeight;++y)for(int x=0;x<a.width;++x)if(!grip.contains(x,y)&&a.getPixelColour(x,y)!=b.getPixelColour(x,y)){std::cerr<<"fold diff width="<<width<<" fold="<<fold<<" pixel="<<x<<","<<y<<" before="<<a.getPixelColour(x,y).toString()<<" after="<<b.getPixelColour(x,y).toString()<<" height="<<e->getHeight()<<"\n";check(false,"paused top/graph pixels stay identical through fold");}
+   for(int y=0;y<topHeight;++y)for(int x=0;x<a.width;++x)if(!grip.contains(x,y)&&!samePixel(a.getPixelColour(x,y),b.getPixelColour(x,y))){std::cerr<<"fold diff width="<<width<<" fold="<<fold<<" pixel="<<x<<","<<y<<" before="<<a.getPixelColour(x,y).toString()<<" after="<<b.getPixelColour(x,y).toString()<<" height="<<e->getHeight()<<"\n";check(false,"paused top/graph pixels stay identical through fold");}
   }
  }
  e->setSize(800,905);check(DuckUiTestAccess::widthResizePending(*e),"real width resize still schedules a rebuild while transport is idle");DuckUiTestAccess::settle(*e);

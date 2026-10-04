@@ -465,7 +465,10 @@ void DuckPocketAudioProcessorEditor::paintChrome(juce::Graphics& g){
 #endif
     // Keep one expanded-height chrome cache. Folding clips the bottom; it never
     // stretches the graph bed or regenerates top materials at the same width/DPI.
-    g.drawImage(chrome,{0,0,float(getWidth()),expandedDesignHeight*float(getWidth())/800.f},juce::RectanglePlacement::stretchToFit);
+    // Use the cached image's actual pixel aspect, avoiding an extra fractional
+    // Y scale on CoreGraphics when width*905/800 rounds to physical pixels.
+    g.fillAll(look.tokens().chassis);
+    g.drawImage(chrome,{0,0,float(getWidth()),float(chrome.getHeight())*float(getWidth())/float(chrome.getWidth())},juce::RectanglePlacement::stretchToFit);
 }
 
 void DuckPocketAudioProcessorEditor::paintDynamicLabels(juce::Graphics& g){
