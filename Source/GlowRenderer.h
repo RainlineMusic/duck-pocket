@@ -20,6 +20,18 @@ public:
     void newOpenGLContextCreated() override {
         using namespace juce::gl;
         failed.store(false);ready.store(false);
+        // JUCE 8's Windows context creation can fall back to a legacy WGL
+        // context when the requested 3.2 profile is unavailable. The GL entry
+        // points below are then null, so fail before compiling shaders or
+        // calling vertex-array/framebuffer functions.
+        const auto* rawVersion=glGetString(GL_VERSION);
+        const auto version=rawVersion!=nullptr?juce::String::fromUTF8(reinterpret_cast<const char*>(rawVersion)):juce::String();
+        const int major=version.upToFirstOccurrenceOf(".",false,false).getIntValue();
+        const int minor=version.fromFirstOccurrenceOf(".",false,false).getIntValue();
+        if(rawVersion==nullptr||major<3||(major==3&&minor<2)
+           ||glGenVertexArrays==nullptr||glBindVertexArray==nullptr||glDeleteVertexArrays==nullptr
+           ||glGenBuffers==nullptr||glBindBuffer==nullptr||glBufferData==nullptr||glDeleteBuffers==nullptr
+           ||glBindFramebuffer==nullptr){failed.store(true);return;}
         const juce::String vertex="attribute vec2 position;varying vec2 uv;void main(){uv=(position+1.0)*0.5;gl_Position=vec4(position,0.0,1.0);}";
         const juce::String copy="varying vec2 uv;uniform sampler2D source;uniform float opacity;void main(){gl_FragColor=texture2D(source,uv)*opacity;}";
         const juce::String blur="varying vec2 uv;uniform sampler2D source;uniform vec2 stepSize;void main(){vec4 c=texture2D(source,uv)*0.227027;c+=(texture2D(source,uv+stepSize*1.384615)+texture2D(source,uv-stepSize*1.384615))*0.316216;c+=(texture2D(source,uv+stepSize*3.230769)+texture2D(source,uv-stepSize*3.230769))*0.070270;gl_FragColor=c;}";

@@ -12,6 +12,7 @@ struct DuckUiTestAccess {
  static void gl(DuckPocketAudioProcessorEditor& e,bool enabled){e.setOpenGL(enabled,false);}
  static void simulateFailedGl(DuckPocketAudioProcessorEditor& e){e.setOpaque(false);e.glowRenderer=std::make_unique<PocketGlowRenderer>();e.glowRenderer->ready.store(false);e.glowRenderer->presented.store(true);e.glowRenderer->failed.store(true);e.signalPeak=e.currentReduction=0;}
  static bool ready(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->ready.load();}
+ static bool failed(DuckPocketAudioProcessorEditor& e){return !e.glowRenderer||e.glowRenderer->failed.load();}
  static bool rendered(DuckPocketAudioProcessorEditor& e){return e.glowRenderer&&e.glowRenderer->presented.load()&&e.glowRenderer->frames.load()>0;}
  static std::uint64_t blurredFrames(DuckPocketAudioProcessorEditor& e){return e.glowRenderer?e.glowRenderer->blurredFrames.load():0;}
  static void trigger(DuckPocketAudioProcessorEditor& e){e.repaint();if(e.glowRenderer)e.glowRenderer->context.triggerRepaint();}
@@ -19,17 +20,23 @@ struct DuckUiTestAccess {
 };
 static void check(bool v,const char* message){if(!v){std::cerr<<"FAIL "<<message<<'\n';std::abort();}}
 static void pump(int milliseconds){juce::MessageManager::getInstance()->runDispatchLoopUntil(milliseconds);}
-int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=="--gl-smoke";if(glSmoke)std::cerr<<"GL_PROBE_START\n";juce::ScopedJuceInitialiser_GUI init;const juce::File output(glSmoke?juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("duck-gl-smoke"):juce::File(argc>1?argv[1]:"screenshots"));if(!glSmoke)output.createDirectory();
+int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=="--gl-smoke";if(glSmoke)std::cerr<<"GL_PROBE_START\n";juce::ScopedJuceInitialiser_GUI init;if(glSmoke)std::cerr<<"GL_PROBE_GUI_READY\n";const juce::File output(glSmoke?juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("duck-gl-smoke"):juce::File(argc>1?argv[1]:"screenshots"));if(!glSmoke)output.createDirectory();
  DuckPocketAudioProcessor p;p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
+ if(glSmoke)std::cerr<<"GL_PROBE_PROCESSOR_READY\n";
  std::unique_ptr<DuckPocketAudioProcessorEditor> e(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));const bool native=argc>2&&juce::String(argv[2])=="--native";if(native){e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);}e->setSize(960,760);DuckUiTestAccess::settle(*e);
+ if(glSmoke)std::cerr<<"GL_PROBE_EDITOR_READY\n";
  if(glSmoke){
 #if DUCK_ENABLE_OPENGL
   const double start=juce::Time::getMillisecondCounterHiRes();
   for(int cycle=0;cycle<100;++cycle){
    if(cycle>0){e.reset(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));e->setSize(960,760);}
+   if(cycle==0)std::cerr<<"GL_PROBE_ATTACH_PEER\n";
    e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);
+   if(cycle==0)std::cerr<<"GL_PROBE_PEER_READY\n";
    check(e->getPeer()!=nullptr,"native editor peer created");DuckUiTestAccess::gl(*e,true);
-   for(int poll=0;poll<100&&!DuckUiTestAccess::ready(*e);++poll){DuckUiTestAccess::trigger(*e);pump(20);}
+   if(cycle==0)std::cerr<<"GL_PROBE_CONTEXT_ATTACHED\n";
+   for(int poll=0;poll<100&&!DuckUiTestAccess::ready(*e)&&!DuckUiTestAccess::failed(*e);++poll){DuckUiTestAccess::trigger(*e);pump(20);}
+   if(cycle==0)std::cerr<<"GL_PROBE_CONTEXT_READY="<<DuckUiTestAccess::ready(*e)<<" FAILED="<<DuckUiTestAccess::failed(*e)<<'\n';
    check(DuckUiTestAccess::ready(*e),"native OpenGL context and shaders created");
    if(cycle==0){
     juce::AudioBuffer<float> samples(4,64);juce::MidiBuffer midi;
