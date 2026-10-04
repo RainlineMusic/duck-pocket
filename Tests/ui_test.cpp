@@ -28,6 +28,19 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  if(glSmoke)std::cerr<<"GL_PROBE_EDITOR_READY\n";
  if(glSmoke){
 #if DUCK_ENABLE_OPENGL
+#if JUCE_WINDOWS
+  const double start=juce::Time::getMillisecondCounterHiRes();
+  for(int cycle=0;cycle<100;++cycle){
+   if(cycle>0){e.reset(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));e->setSize(960,760);}
+   e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);
+   check(e->getPeer()!=nullptr,"native Windows editor peer created");
+   DuckUiTestAccess::gl(*e,true);
+   check(DuckUiTestAccess::fellBack(*e),"Windows OpenGL request stays on the opaque native renderer");
+   if(cycle==0||cycle==99){const auto frame=e->createComponentSnapshot(e->getLocalBounds());check(frame.isValid()&&frame.getPixelAt(300,420).getAlpha()==255,"native Windows renderer paints opaque graph glass");}
+   e->removeFromDesktop();e.reset();
+  }
+  std::cout<<"PASS 100 native Windows editor peers with OpenGL disabled, total_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';
+#else
   const double start=juce::Time::getMillisecondCounterHiRes();
   for(int cycle=0;cycle<100;++cycle){
    if(cycle>0){e.reset(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));e->setSize(960,760);}
@@ -58,6 +71,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    DuckUiTestAccess::gl(*e,false);e->removeFromDesktop();e.reset();
   }
   std::cout<<"PASS native OpenGL glow and 100 editor peer lifecycles, total_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';
+#endif
 #else
   std::cout<<"SKIP OpenGL is disabled at compile time\n";
 #endif

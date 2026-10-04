@@ -75,12 +75,6 @@ void PocketLook::drawLinearSlider(juce::Graphics& g,int x,int y,int w,int h,floa
     if(style==juce::Slider::TwoValueHorizontal){thumb(minPos);thumb(maxPos);}else thumb(pos);
 }
 ModernDial::ModernDial(PocketLook& l,juce::String t,juce::String sub,juce::String u,juce::uint32 a,bool inf,bool infMin,bool compactDial,juce::String infLabel):look(l),title(t),subtitle(sub),unit(u),infinity(inf),compact(compactDial){juce::ignoreUnused(a,infMin,infLabel);setSliderStyle(juce::Slider::RotaryVerticalDrag);setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);setName(t);setWantsKeyboardFocus(true);}
-float ModernDial::valueTextHeight(const juce::String& value) const {
-    const float preferred=compact?17.f:(title=="Influence"?29.f:25.f);
-    const float width=float(juce::jmin(getWidth(),getHeight()))*(compact?.66f:.71f);
-    const float textWidth=juce::GlyphArrangement::getStringWidth(pocketFont(preferred,true),value);
-    return juce::jmax(11.f,juce::jmin(preferred,textWidth>0?preferred*width/textWidth:preferred));
-}
 void ModernDial::paint(juce::Graphics& g){
     const auto t=look.tokens();const float size=float(juce::jmin(getWidth(),getHeight()));
     const auto c=getLocalBounds().toFloat().getCentre();const float r=size*(compact?.33f:.355f),ring=r+size*.047f;
@@ -177,11 +171,11 @@ void DuckPocketAudioProcessorEditor::setFrozen(bool frozen){
     repaint(gainArea);repaint(scopeArea);
 }
 void DuckPocketAudioProcessorEditor::showSettingsMenu(){juce::PopupMenu root,window,theme;for(size_t i=0;i<windows.size();++i)window.addItem(int(i)+1,timeLabel(windows[i]),true,std::abs(gainWindow-windows[i])<1e-6);theme.addItem(201,"Neon",true,look.theme==PocketTheme::Neon);theme.addItem(204,"Amber",true,look.theme==PocketTheme::Amber);theme.addItem(202,"Solid Dark",true,look.theme==PocketTheme::SolidDark);theme.addItem(203,"Solid White",true,look.theme==PocketTheme::SolidWhite);root.addSubMenu("Graph window",window);root.addSeparator();root.addSubMenu("Theme",theme);
-#if DUCK_ENABLE_OPENGL
+#if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
 root.addSeparator();root.addItem(401,"OpenGL (experimental)",true,glowRenderer!=nullptr);
 #endif
 root.addSeparator();root.addItem(301,"Percentage Duration",true,durationIsRelative);auto safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this);root.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(settingsButton),[safe](int id){if(!safe||id==0)return;
-#if DUCK_ENABLE_OPENGL
+#if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
 if(id==401){safe->setOpenGL(safe->glowRenderer==nullptr);return;}
 #endif
 if(id>=1&&id<=6)safe->setHistoryWindow(windows[size_t(id-1)]);else if(id==301){auto* prm=safe->audioProcessor.parameters.getParameter("relativeDuration");prm->beginChangeGesture();prm->setValueNotifyingHost(safe->durationIsRelative?0.f:1.f);prm->endChangeGesture();safe->syncDurationMode();}else if(id==201)safe->setTheme(PocketTheme::Neon);else if(id==204)safe->setTheme(PocketTheme::Amber);else if(id==202)safe->setTheme(PocketTheme::SolidDark);else if(id==203)safe->setTheme(PocketTheme::SolidWhite);});}
@@ -454,12 +448,16 @@ void DuckPocketAudioProcessorEditor::paintOverChildren(juce::Graphics& g){
     text(g,"BYPASSED",centre,size,ink,juce::Justification::centred,look.isDark()?.1f:0.f);
 }
 void DuckPocketAudioProcessorEditor::parentHierarchyChanged(){
-#if DUCK_ENABLE_OPENGL
+#if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
     if(getPeer()&&preferences&&preferences->getBoolValue("duckPocket.ui.opengl",false)&&!glowRenderer)setOpenGL(true,false);
 #endif
 }
 #if DUCK_ENABLE_OPENGL
 void DuckPocketAudioProcessorEditor::setOpenGL(bool enabled,bool persist){
+#if JUCE_WINDOWS
+    // The hosted WGL peer can access-violate before a renderer callback runs.
+    enabled=false;
+#endif
     if(glowRenderer){glowRenderer->stop();glowRenderer.reset();}
     lastGpuFrame.reset();glWasReady=false;setOpaque(!enabled);
     if(enabled&&getPeer()){glowRenderer=std::make_unique<PocketGlowRenderer>();glAttachTime=juce::Time::getMillisecondCounterHiRes();glowRenderer->attach(*this);}

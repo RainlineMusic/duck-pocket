@@ -141,7 +141,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Probe native OpenGL and 100 editor peer lifecycles
-        continue-on-error: true # Hosted runners may not expose a usable GPU/context.
+        continue-on-error: true # Hosted macOS runners may lack a usable GPU/context.
         shell: bash
         run: |
           set -o pipefail
@@ -220,8 +220,7 @@ jobs:
           path: pluginval-windows.log
           if-no-files-found: ignore
 
-      - name: Probe native OpenGL and 100 editor peer lifecycles
-        continue-on-error: true # Hosted runners may not expose a usable GPU/context.
+      - name: Verify 100 native Windows editor peers without OpenGL
         shell: pwsh
         run: |
           $out = "$PWD/native-gl-windows.stdout.log"
@@ -231,7 +230,7 @@ jobs:
           if ($null -eq $probe) { 'PROCESS_START_FAILED' | Add-Content native-gl-windows.log; exit 1 }
           if (-not $probe.WaitForExit(300000)) {
             Stop-Process -Id $probe.Id -Force
-            'TIMEOUT: native OpenGL probe exceeded 300 seconds' | Add-Content native-gl-windows.log
+            'TIMEOUT: native Windows peer probe exceeded 300 seconds' | Add-Content native-gl-windows.log
             exit 124
           }
           Get-Content $out, $err | Tee-Object -FilePath native-gl-windows.log -Append
