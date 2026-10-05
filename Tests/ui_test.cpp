@@ -189,7 +189,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  }
  e->createComponentSnapshot(e->getLocalBounds());auto cached=DuckUiTestAccess::caches(*e);auto warm=juce::Time::getMillisecondCounterHiRes();for(int i=0;i<20;++i){e->createComponentSnapshot(e->getLocalBounds());}std::cout<<"warm_snapshot_ms="<<(juce::Time::getMillisecondCounterHiRes()-warm)/20.<<'\n';check(DuckUiTestAccess::caches(*e)==cached,"chrome reused when unchanged");
  auto before= DuckUiTestAccess::plots(*e);e->createComponentSnapshot({60,108,240,250});check(DuckUiTestAccess::plots(*e)==before,"knob-only clip never rasterises graphs");
- e->createComponentSnapshot({50,423,200,100});auto after=DuckUiTestAccess::plots(*e);check(after[0]==before[0]+1&&after[1]==before[1],"gain-only clip does not rasterise oscilloscope");
+ e->createComponentSnapshot({50,423,200,100});auto after=DuckUiTestAccess::plots(*e);check(after[0]==before[0]&&after[1]==before[1],"gain-only clip bypasses glow buffers and leaves oscilloscope untouched");
 
 #if DUCK_ENABLE_OPENGL
  DuckUiTestAccess::simulateFailedGl(*e);auto fallback=e->createComponentSnapshot(e->getLocalBounds());check(fallback.getPixelAt(300,650).getAlpha()==255,"failed GL leaves opaque software glass");DuckUiTestAccess::gl(*e,false);
