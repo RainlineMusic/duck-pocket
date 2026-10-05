@@ -106,10 +106,10 @@ public:
     HeaderValue(PocketLook& l,bool decibels):look(l),db(decibels){setSliderStyle(juce::Slider::RotaryVerticalDrag);setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);setMouseDragSensitivity(db?180:200);setDoubleClickReturnValue(true,db?0:100);setWantsKeyboardFocus(true);}
     juce::String displayedValue() const {return db?juce::String(std::abs(getValue())<.05?0.:getValue(),1)+" dB":juce::String(getValue(),0)+"%";}
     void paint(juce::Graphics& g) override {
-        const auto t=look.tokens();const float scale=float(getHeight())/31.f;auto r=getLocalBounds().toFloat().reduced(.75f*scale);
-        g.setGradientFill(juce::ColourGradient(t.raised.brighter(.18f),0,0,t.raised.darker(.15f),0,float(getHeight()),false));g.fillRoundedRectangle(r,2.5f*scale);
-        g.setColour(t.out.withAlpha(isMouseOverOrDragging()?.8f:.45f));g.drawRoundedRectangle(r,2.5f*scale,juce::jmax(.6f,scale));
-        g.setColour(t.ink);g.setFont(pocketFont(juce::jmax(10.f,14.f*scale)));g.drawText(displayedValue(),r,juce::Justification::centred);
+        const auto t=look.tokens();const float scale=float(getHeight())/21.7f;auto r=getLocalBounds().toFloat().reduced(.75f*scale);
+        g.setColour(isMouseOverOrDragging()?t.raised.brighter(.12f):t.raised);g.fillRoundedRectangle(r,2.5f*scale);
+        g.setColour(t.out.withAlpha(isMouseOverOrDragging()?1.f:.75f));g.drawRoundedRectangle(r,2.5f*scale,juce::jmax(.6f,scale));
+        g.setColour(t.ink);g.setFont(pocketFont(14.f*scale));g.drawText(displayedValue(),r,juce::Justification::centred);
     }
 private:
     PocketLook& look;bool db;
@@ -169,7 +169,7 @@ private:
     double gainResume=0,scopeResume=0;
     bool ready=false,rangeGesture=false,processRangeGesture=false,capturingBlur=false,bypassTarget=false;
     double resizeStamp=0,nextFrameMs=0; // nextFrameMs = time of the last rendered frame
-    double displayTime=0,lastClock=0,lastLatest=0,gapMax=0,lastPaintedTime=-1;
+    double displayTime=0,lastClock=0,lastLatest=0,lastPacketClock=0,gapMax=0,lastPaintedTime=-1;
     float bypassMix=0;
     double gainWindow=1.,scopeWindow=1.;
     std::uint32_t traceGeneration=0;
