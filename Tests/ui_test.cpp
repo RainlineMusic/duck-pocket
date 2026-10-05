@@ -73,11 +73,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);
    check(e->getPeer()!=nullptr,"native Windows editor peer created");
    DuckUiTestAccess::gl(*e,true);
-   for(int poll=0;poll<100&&!DuckUiTestAccess::ready(*e)&&!DuckUiTestAccess::failed(*e);++poll)pump(20);
-   DuckUiTestAccess::tick(*e);
-   check(DuckUiTestAccess::ready(*e)||DuckUiTestAccess::fellBack(*e),"Windows experimental GL creates a context or falls back");
-   DuckUiTestAccess::gl(*e,false);
-   check(DuckUiTestAccess::fellBack(*e),"Windows GL can be disabled before native playback checks");
+   check(DuckUiTestAccess::fellBack(*e),"Windows GL request is blocked before unsafe native context creation");
    if(cycle==0||cycle==99){const auto frame=e->createComponentSnapshot(e->getLocalBounds());check(frame.isValid()&&frame.getPixelAt(300,650).getAlpha()==255,"native Windows renderer paints opaque graph glass");}
    e->removeFromDesktop();e.reset();
   }
