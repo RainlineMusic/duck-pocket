@@ -8,9 +8,16 @@ struct PocketTrace {
     std::uint32_t generation=0;
 };
 
-class DuckPocketAudioProcessor final : public juce::AudioProcessor {
+class DuckPocketAudioProcessor final : public juce::AudioProcessor,
+                                      private juce::AudioProcessorValueTreeState::Listener,
+                                      private juce::AsyncUpdater {
 public:
     DuckPocketAudioProcessor();
+    ~DuckPocketAudioProcessor() override;
+    int getLookaheadMs() const noexcept;
+    void selectLookahead(int index);
+    bool usesExtendedAttack() const noexcept {return extendedAttack->load()>.5f;}
+    juce::RangedAudioParameter& attackParameter(){return *parameters.getParameter(usesExtendedAttack()?"attackMs":"attack");}
     bool popTrace(PocketTrace&);
 
     std::atomic<bool> displayBypass{false}, editorOpen{false};
@@ -46,6 +53,10 @@ public:
 
 private:
     pocket::Engine engine;
+    std::atomic<float>* lookaheadChoice=nullptr,*attackMs=nullptr,*extendedAttack=nullptr;
+    std::atomic<double> preparedRate{48000.};
+    void parameterChanged(const juce::String&,float) override;
+    void handleAsyncUpdate() override;
     std::atomic<float>* amount=nullptr,*duration=nullptr,*low=nullptr,*high=nullptr,*bypass=nullptr,*balance=nullptr,*processLow=nullptr,*processHigh=nullptr,*outputGain=nullptr,*durationPercent=nullptr,*relativeDuration=nullptr,*mix=nullptr,*attack=nullptr,*legacyAttack=nullptr;
     void processAudio(juce::AudioBuffer<float>&,juce::MidiBuffer&,bool);
 

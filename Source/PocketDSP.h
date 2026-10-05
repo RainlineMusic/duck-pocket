@@ -17,6 +17,7 @@ class Engine {
     size_t write=0,head=0,tail=0;
     std::uint64_t clock=0,age=0;
     int lookahead=240,refractory=0,quiet=0,rearmQuiet=0;
+    float lookaheadMilliseconds=5.f;
     double rate=48000;
     float amount=1,targetAmount=1,ms=0,targetMs=0,targetBypass=0,bypassMix=0,outputGain=1,targetOutputGain=1;
     float duration=2000,targetDuration=2000,envelope=0,fast=0,slow=0,eventPeak=0,smoothedControl=0;
@@ -34,10 +35,10 @@ class Engine {
     static float cleanInput(float v) noexcept { return std::isfinite(v)&&std::abs(v)<=1.0e12f?v:0.f; }
     static double safeRate(double sr) noexcept { return std::isfinite(sr)?std::clamp(sr,1.,384000.):48000.; }
 public:
-    // 5 ms of lookahead: the gain starts moving before the transient arrives so the
+    // Default 5 ms of lookahead: the gain starts moving before the transient arrives so the
     // duck fades in instead of cutting the waveform, which is what caused clicks.
     static double validatedSampleRate(double sr) noexcept {return safeRate(sr);}
-    static int latencyForRate(double sr) noexcept { return std::max(1,int(std::ceil(safeRate(sr)*.005))); }
+    static int latencyForRate(double sr,float ms=5.f) noexcept { return std::max(1,int(std::ceil(safeRate(sr)*double(std::clamp(std::isfinite(ms)?ms:5.f,1.f,50.f))*.001))); }
     static float durationGain(double elapsedMs,float lengthMs) noexcept {
         if(lengthMs>=1999.5f)return 1;
         const double length=std::clamp(double(lengthMs),1.,2000.);
@@ -54,9 +55,12 @@ public:
     }
     Engine(){reset(48000,1);}
     int latency() const noexcept {return lookahead;}
-    void reset(double sr,float influence=1) {
-        rate=safeRate(sr);lookahead=latencyForRate(rate);
-        delay.assign(size_t(lookahead+1),{});peaks.assign(size_t(lookahead+2),{});
+    void reset(double sr,float influence=1,float lookaheadMs=5.f) {
+        rate=safeRate(sr);lookahead=latencyForRate(rate,lookaheadMs);
+        lookaheadMilliseconds=std::clamp(std::isfinite(lookaheadMs)?lookaheadMs:5.f,1.f,50.f);
+        // Reserve the maximum horizon in prepare/reset, never on the audio thread.
+        const int maximum=latencyForRate(rate,50.f);
+        delay.assign(size_t(maximum+1),{});peaks.assign(size_t(maximum+2),{});
         write=head=tail=0;clock=age=0;mixScale=targetMixScale=1;mixInit=false;attackSamples=0;peakWindow=lookahead;legacyAttack=true;peakReset=false;refractory=quiet=rearmQuiet=0;
         filter.reset(rate);processingFilter.reset(rate);
         amount=targetAmount=std::clamp(clean(influence),0.f,1.5f);
@@ -69,10 +73,15 @@ public:
         slew=float(std::exp(-1/(rate*.005)));duration=targetDuration=2000;durationInit=false;
         targetPercent=percent=100;measuredLengthMs=eventLengthMs=0;lastAudibleAge=0;relativeDuration=false;
     }
+    void setLookaheadMs(float ms) noexcept {
+        lookaheadMilliseconds=std::clamp(std::isfinite(ms)?ms:5.f,1.f,50.f);
+        const int next=latencyForRate(rate,ms);
+        if(next!=lookahead){lookahead=next;peakReset=true;}
+    }
     void configure(float influence,float durationMs,float low=20,float high=20000,bool bypassed=false,float balance=0,float processLow=20,float processHigh=20000,float outputDb=0,float durationPercent=100,bool useRelativeDuration=false,float mixPercent=100,float attackMs=0,bool useLegacyAttack=true) noexcept {
         targetMixScale=std::clamp(std::isfinite(mixPercent)?mixPercent*.01f:1.f,0.f,1.f);
         if(!mixInit){mixScale=targetMixScale;mixInit=true;}
-        const int nextAttack=std::clamp(int(std::round(std::clamp(clean(attackMs),0.f,5.f)*rate*.001)),0,lookahead);
+        const int nextAttack=std::clamp(int(std::round(std::clamp(clean(attackMs),0.f,lookaheadMilliseconds)*rate*.001)),0,lookahead);
         const bool nextLegacy=useLegacyAttack&&nextAttack==0;
         if(nextAttack!=attackSamples||nextLegacy!=legacyAttack)peakReset=true;
         attackSamples=nextAttack;legacyAttack=nextLegacy;peakWindow=legacyAttack?lookahead:attackSamples;
@@ -152,7 +161,7 @@ public:
         };
         if(peakReset){
             head=tail=0;
-            // Bounded by the existing 5 ms buffer, with no allocations. Rebuild
+            // Bounded by the preallocated 50 ms buffer, with no allocations. Rebuild
             // from actual history when Attack is automated so no hit is lost.
             for(int j=peakWindow;j>0;--j)if(clock>=std::uint64_t(j)&&clock>=std::uint64_t(detectorDelay+j))pushPeak(clock-std::uint64_t(j),pastControl(detectorDelay+j));
             peakReset=false;
@@ -168,7 +177,7 @@ public:
             smoothedControl=predicted>smoothedControl?std::min(predicted,smoothedControl+predicted/float(attackSamples)):predicted;
             if(clock>=std::uint64_t(lookahead))smoothedControl=std::max(smoothedControl,pastControl(lookahead));
         }
-        delay[write]={input,{key[0]*gate,key[1]*gate},control};const size_t read=(write+1)%delay.size();
+        delay[write]={input,{key[0]*gate,key[1]*gate},control};const size_t read=(write+delay.size()-size_t(lookahead))%delay.size();
         Sample result;result.dry=delay[read].dry;result.key=delay[read].key;
         amount=targetAmount+slew*(amount-targetAmount);ms=targetMs+slew*(ms-targetMs);outputGain=targetOutputGain+slew*(outputGain-targetOutputGain);
         if(std::abs(amount-targetAmount)<1e-4f)amount=targetAmount;
@@ -199,7 +208,7 @@ public:
         result.out[0]*=outputGain;result.out[1]*=outputGain;
 
         // Click-free but perceptually immediate bypass. Both sides are already
-        // aligned to the same 5 ms lookahead, so this crossfade adds no latency.
+        // aligned to the selected lookahead, so this crossfade adds no latency.
         const float bypassTarget=targetBypass>.5f?1.f:0.f;
         bypassMix=bypassTarget+bypassC*(bypassMix-bypassTarget);
         if(std::abs(bypassMix-bypassTarget)<1e-5f)bypassMix=bypassTarget;
@@ -208,7 +217,7 @@ public:
             result.out[1]+=bypassMix*(result.dry[1]-result.out[1]);
             result.gain+=bypassMix*(1.f-result.gain);
         }
-        write=read;++clock;return result;
+        write=(write+1)%delay.size();++clock;return result;
     }
 };
 }

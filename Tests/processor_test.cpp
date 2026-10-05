@@ -4,6 +4,11 @@
 #include <thread>
 static void check(bool b,const char* m){if(!b){std::cerr<<"FAIL "<<m<<'\n';std::abort();}}
 static void set(DuckPocketAudioProcessor& p,const char* id,float value){auto* a=p.parameters.getParameter(id);a->setValueNotifyingHost(a->convertTo0to1(value));}
+struct LatencyListener:juce::AudioProcessorListener {
+ int changes=0;
+ void audioProcessorParameterChanged(juce::AudioProcessor*,int,float) override {}
+ void audioProcessorChanged(juce::AudioProcessor*,const ChangeDetails& details) override {if(details.latencyChanged)++changes;}
+};
 int main(){juce::ScopedJuceInitialiser_GUI init;
  auto processorStorage=std::make_unique<DuckPocketAudioProcessor>();auto& p=*processorStorage;auto fresh=std::make_unique<DuckPocketAudioProcessor>();juce::MidiBuffer midi;
  for(double invalid:{0.,std::numeric_limits<double>::quiet_NaN(),std::numeric_limits<double>::infinity()}){p.setRateAndBufferSizeDetails(invalid,64);p.prepareToPlay(invalid,64);check(p.getLatencySamples()==pocket::Engine::latencyForRate(invalid),"invalid host rate safe");}
@@ -21,6 +26,24 @@ int main(){juce::ScopedJuceInitialiser_GUI init;
  check(p.parameters.getRawParameterValue("mix")->load()==100,"old sessions default to full Mix");check(p.parameters.getRawParameterValue("legacyAttack")->load()==1,"old sessions retain their original soft attack");
  p.getStateInformation(state);auto restoredStorage=std::make_unique<DuckPocketAudioProcessor>();auto& restored=*restoredStorage;restored.setStateInformation(state.getData(),int(state.getSize()));check(restored.parameters.getRawParameterValue("duration")->load()==123,"state roundtrip");check(restored.parameters.getRawParameterValue("relativeDuration")->load()==0,"legacy mode roundtrip");check(fresh->parameters.getRawParameterValue("durationPercent")->load()==100,"new default 100 percent");
  set(p,"mix",50);set(p,"attack",3.2f);set(p,"legacyAttack",0);p.getStateInformation(state);restored.setStateInformation(state.getData(),int(state.getSize()));check(restored.parameters.getRawParameterValue("mix")->load()==50&&std::abs(restored.parameters.getRawParameterValue("attack")->load()-3.2f)<.001f,"Mix and Attack state roundtrip");check(fresh->parameters.getRawParameterValue("attack")->load()==0,"new Attack defaults to zero");
+ // Per-instance latency choice, immediate host notification, old automation mapping.
+ auto variable=std::make_unique<DuckPocketAudioProcessor>();auto other=std::make_unique<DuckPocketAudioProcessor>();
+ variable->setRateAndBufferSizeDetails(48000,64);variable->prepareToPlay(48000,64);
+ LatencyListener listener;variable->addListener(&listener);
+ set(*variable,"attackMs",5.f);variable->selectLookahead(3);
+ check(variable->getLatencySamples()==960&&listener.changes>0,"Lookahead immediately notifies the host of 20 ms latency");
+ check(variable->parameters.getRawParameterValue("attackMs")->load()==5.f,"increasing Lookahead preserves Attack milliseconds");
+ check(other->getLookaheadMs()==5,"Lookahead is not a global preference");
+ variable->getStateInformation(state);other->setStateInformation(state.getData(),int(state.getSize()));
+ check(other->getLookaheadMs()==20&&other->parameters.getRawParameterValue("attackMs")->load()==5.f,"Lookahead and Attack roundtrip per instance");
+ variable->selectLookahead(0);check(variable->getLatencySamples()==48&&variable->parameters.getRawParameterValue("attackMs")->load()==1.f,"1 ms low-latency option clamps Attack");
+ for(double sr:{44100.,48000.,88200.,96000.,176400.,192000.})for(int index=0;index<5;++index){
+  variable->selectLookahead(index);variable->setRateAndBufferSizeDetails(sr,64);variable->prepareToPlay(sr,64);
+  check(variable->getLatencySamples()==pocket::Engine::latencyForRate(sr,float(variable->getLookaheadMs())),"all choices report correct latency after sample-rate changes");
+ }
+ variable->removeListener(&listener);
+ check(!p.usesExtendedAttack(),"migrated sessions retain the original Attack automation mapping");
+ p.selectLookahead(3);check(p.usesExtendedAttack()&&std::abs(p.parameters.getRawParameterValue("attackMs")->load()-3.2f)<.001f,"opting into extended lookahead preserves migrated Attack milliseconds");
  const char bad[]="broken XML";p.setStateInformation(bad,sizeof bad);p.setStateInformation(nullptr,0);check(p.parameters.getRawParameterValue("duration")->load()==123,"corrupt state is ignored");
  p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);p.editorOpen.store(true);juce::AudioBuffer<float> b(p.getTotalNumInputChannels(),4096);b.clear();p.processBlock(b,midi);PocketTrace v;check(p.popTrace(v),"trace produced");const auto epoch=v.generation;while(p.popTrace(v)){}const double beforeReset=v.time;p.reset();p.processBlock(b,midi);bool found=false;while(p.popTrace(v)){found=true;check(v.generation==epoch&&v.time>beforeReset,"host reset preserves display timeline");}check(found,"trace continues after reset");const double beforePrepare=v.time;p.prepareToPlay(48000,64);p.processBlock(b,midi);found=false;while(p.popTrace(v)){found=true;check(v.generation==epoch&&v.time>beforePrepare,"host prepare preserves display timeline");}check(found,"trace continues after prepare");
  auto scaledStorage=std::make_unique<DuckPocketAudioProcessor>();auto& scaled=*scaledStorage;scaled.setRateAndBufferSizeDetails(48000,64);scaled.prepareToPlay(48000,64);scaled.editorOpen.store(true);set(scaled,"mix",50);

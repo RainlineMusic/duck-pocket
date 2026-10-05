@@ -146,7 +146,10 @@ private:
     ResettableRangeSlider sidechainRange,processingRange;
     ModernDial midSide{look,"M/S Balance","","balance",0,false,false,true};
     juce::TextButton settingsButton{"settings"},bypassButton{"power"},freezeButton{"freeze"},expandButton{"expand"};
-    std::unique_ptr<SliderAttachment> influenceAttach,durationAttach,outputAttach,msAttach,attackAttach,mixAttach;
+    std::unique_ptr<SliderAttachment> influenceAttach,durationAttach,outputAttach,msAttach,mixAttach;
+    std::unique_ptr<juce::ParameterAttachment> attackAttach;
+    bool attackUsesMs=false,updatingAttack=false,attackGesture=false;
+    void syncAttackRange();
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttach;
     std::unique_ptr<juce::ParameterAttachment> lowAttach,highAttach,processLowAttach,processHighAttach;
     std::unique_ptr<juce::PropertiesFile> preferences;
