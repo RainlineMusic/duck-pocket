@@ -187,7 +187,11 @@ DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioPr
     setResizeLimits(400,juce::roundToInt(designHeight()*.5f),1500,juce::roundToInt(designHeight()*1.875f));getConstrainer()->setFixedAspectRatio(800./designHeight());setSize(width,juce::roundToInt(width*designHeight()/800.f));
     preferences->removeValue("duckPocket.ui.expanded");
     // A fixed column budget bounds path construction inside the host GUI.
+#if JUCE_WINDOWS
+    pathPoints.reserve(900);pathTop.reserve(902);pathBottom.reserve(902);bucketLo.reserve(900);bucketHi.reserve(900);bucketScratch.reserve(900);
+#else
     pathPoints.reserve(1200);pathTop.reserve(1202);pathBottom.reserve(1202);bucketLo.reserve(1200);bucketHi.reserve(1200);bucketScratch.reserve(1200);
+#endif
     ready=true;p.editorWidth.store(width);PocketTrace discard;while(p.popTrace(discard)){}p.editorOpen.store(true);frameTick();
     // VBlank-driven rendering: long windows have a 30 fps budget; short
     // windows retain the 60 fps interaction rate.
@@ -237,11 +241,11 @@ void DuckPocketAudioProcessorEditor::setFrozen(bool frozen){
     repaint(gainArea);repaint(scopeArea);
 }
 void DuckPocketAudioProcessorEditor::showSettingsMenu(){juce::PopupMenu root,window,theme;for(size_t i=0;i<windows.size();++i)window.addItem(int(i)+1,timeLabel(windows[i]),true,std::abs(gainWindow-windows[i])<1e-6);theme.addItem(201,"Neon",true,look.theme==PocketTheme::Neon);theme.addItem(204,"Amber",true,look.theme==PocketTheme::Amber);theme.addItem(202,"Solid Dark",true,look.theme==PocketTheme::SolidDark);root.addSubMenu("Graph window",window);root.addSeparator();root.addSubMenu("Theme",theme);
-#if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
+#if DUCK_ENABLE_OPENGL
 root.addSeparator();root.addItem(401,"OpenGL (experimental)",true,glowRenderer!=nullptr);
 #endif
 root.addSeparator();root.addItem(301,"Percentage Duration",true,durationIsRelative);auto safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this);root.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(settingsButton),[safe](int id){if(!safe||id==0)return;
-#if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
+#if DUCK_ENABLE_OPENGL
 if(id==401){safe->setOpenGL(safe->glowRenderer==nullptr);return;}
 #endif
 if(id>=1&&id<=6)safe->setHistoryWindow(windows[size_t(id-1)]);else if(id==301){auto* prm=safe->audioProcessor.parameters.getParameter("relativeDuration");prm->beginChangeGesture();prm->setValueNotifyingHost(safe->durationIsRelative?0.f:1.f);prm->endChangeGesture();safe->syncDurationMode();}else if(id==201)safe->setTheme(PocketTheme::Neon);else if(id==204)safe->setTheme(PocketTheme::Amber);else if(id==202)safe->setTheme(PocketTheme::SolidDark);});}
@@ -326,7 +330,20 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
     // or display scale actually was, which is what made it look chunky/low-res
     // once resized above ~800px or viewed on a HiDPI screen.
     const float physicalScale=juce::jlimit(1.f,8.f,g.getInternalContext().getPhysicalPixelScaleFactor());
-    const int columns=juce::jlimit(2,1200,juce::roundToInt(plot.getWidth()*physicalScale));
+    // Windows uses the host CPU Graphics path for the live plots. Rasterising
+    // every physical pixel made a 150-200% desktop render needlessly expensive
+    // and three editors could saturate Ableton's shared message thread. A
+    // logical-resolution raster keeps the trace crisp while retaining 60 Hz
+    // VBlank updates; the host scales the logical path to the final window.
+#if JUCE_WINDOWS
+    constexpr float graphOversample=1.f;
+    constexpr int maxGraphColumns=800;
+#else
+    constexpr float graphOversample=8.f;
+    constexpr int maxGraphColumns=1200;
+#endif
+    const int columns=juce::jlimit(2,maxGraphColumns,
+                                   juce::roundToInt(plot.getWidth()*juce::jmin(physicalScale,graphOversample)));
     const float span=plot.getWidth()/float(columns-1);
     // Buckets are locked to absolute time, so every bucket always holds the same
     // samples while it scrolls; the fractional part of "now" shifts them by sub-pixel
@@ -388,6 +405,7 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
         constexpr float silenceThreshold=.004f;
         const float midY=plot.getCentreY();
         auto active=[&](int c){const float lo=bucketLo[size_t(c)],hi=bucketHi[size_t(c)];return hi>=lo&&juce::jmax(std::abs(lo),std::abs(hi))>silenceThreshold;};
+        juce::Path aggregate;
         for(int c=0;c<columns;){
             if(!active(c)){++c;continue;}
             int e=c;while(e+1<columns&&active(e+1))++e;
@@ -397,17 +415,21 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
             for(int i=c;i<=e;++i){const float x=xOf(i);pathTop.push_back({x,midY-bucketHi[size_t(i)]*plot.getHeight()*.5f});pathBottom.push_back({x,midY-bucketLo[size_t(i)]*plot.getHeight()*.5f});}
             pathTop.push_back({x1,midY});pathBottom.push_back({x1,midY});
             c=e+1;
-            juce::Path body;
-            body.startNewSubPath(pathTop.front());
-            if(longWindow){for(size_t i=1;i<pathTop.size();++i)body.lineTo(pathTop[i]);}
-            else {for(size_t i=1;i+1<pathTop.size();++i)body.quadraticTo(pathTop[i],(pathTop[i]+pathTop[i+1])*.5f);body.lineTo(pathTop.back());}
-            body.lineTo(pathBottom.back());
-            if(longWindow){for(size_t i=pathBottom.size()-1;i>0;--i)body.lineTo(pathBottom[i-1]);}
-            else for(size_t i=pathBottom.size()-1;i>1;--i)body.quadraticTo(pathBottom[i-1],(pathBottom[i-1]+pathBottom[i-2])*.5f);
-            body.lineTo(pathBottom.front());body.closeSubPath();
-            // Age fade is part of the existing fill/stroke, with no extra pass.
-            g.setGradientFill(traceFades[kind?4:2]);g.fillPath(body);
-            g.setGradientFill(traceFades[kind?5:3]);g.strokePath(body,juce::PathStrokeType(1.1f));
+            // Keep all audible runs in one compound path.  The previous code
+            // submitted a fill and a stroke for every run, which became very
+            // expensive when the waveform crossed the silence threshold.
+            aggregate.startNewSubPath(pathTop.front());
+            if(longWindow){for(size_t i=1;i<pathTop.size();++i)aggregate.lineTo(pathTop[i]);}
+            else {for(size_t i=1;i+1<pathTop.size();++i)aggregate.quadraticTo(pathTop[i],(pathTop[i]+pathTop[i+1])*.5f);aggregate.lineTo(pathTop.back());}
+            aggregate.lineTo(pathBottom.back());
+            if(longWindow){for(size_t i=pathBottom.size()-1;i>0;--i)aggregate.lineTo(pathBottom[i-1]);}
+            else for(size_t i=pathBottom.size()-1;i>1;--i)aggregate.quadraticTo(pathBottom[i-1],(pathBottom[i-1]+pathBottom[i-2])*.5f);
+            aggregate.lineTo(pathBottom.front());aggregate.closeSubPath();
+        }
+        // Age fade is part of the existing fill/stroke, with no extra pass.
+        if(!aggregate.isEmpty()){
+            g.setGradientFill(traceFades[kind?4:2]);g.fillPath(aggregate);
+            g.setGradientFill(traceFades[kind?5:3]);g.strokePath(aggregate,juce::PathStrokeType(1.1f));
         }
     }
 }
@@ -534,16 +556,12 @@ void DuckPocketAudioProcessorEditor::paintOverChildren(juce::Graphics& g){
     text(g,"BYPASSED",centre,size,ink,juce::Justification::centred,look.isDark()?.1f:0.f);
 }
 void DuckPocketAudioProcessorEditor::parentHierarchyChanged(){
-#if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
+#if DUCK_ENABLE_OPENGL
     if(getPeer()&&preferences&&preferences->getBoolValue("duckPocket.ui.opengl.v3",false)&&!glowRenderer)setOpenGL(true,false);
 #endif
 }
 #if DUCK_ENABLE_OPENGL
 void DuckPocketAudioProcessorEditor::setOpenGL(bool enabled,bool persist){
-#if JUCE_WINDOWS
-    // The hosted WGL peer can access-violate before a renderer callback runs.
-    enabled=false;
-#endif
     if(enabled&&glowRenderer)return;
     if(glowRenderer){glowRenderer->stop();glowRenderer.reset();}
     lastGpuFrame.reset();for(auto& phosphor:gpuPhosphor)phosphor.reset();glWasReady=false;setOpaque(!enabled);
@@ -568,7 +586,9 @@ void DuckPocketAudioProcessorEditor::frameTick(){
 #endif
         triggerStamp=-1;repaint(gainArea);repaint(scopeArea);}
     PocketTrace v;bool fresh=false;const float previousPeak=signalPeak;float framePeak=0;
-    while(audioProcessor.popTrace(v)){
+    // Bound each GUI callback even when an audio producer keeps replenishing
+    // the FIFO (e.g. fast offline processing). Never drain an open-ended queue.
+    for(int drained=0;drained<8192&&audioProcessor.popTrace(v);++drained){
         if(v.generation!=traceGeneration||!std::isfinite(v.time))continue;
         history[size_t(cursor)]=v;cursor=(cursor+1)%historyCapacity;filled=juce::jmin(filled+1,historyCapacity);
         const auto bin=static_cast<long long>(std::floor(v.time*500.));
