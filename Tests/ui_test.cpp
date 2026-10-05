@@ -2,6 +2,9 @@
 #include <iostream>
 #include <cstdlib>
 struct DuckUiTestAccess {
+#if JUCE_WINDOWS
+ static void renderer(DuckPocketAudioProcessorEditor& e,const juce::String& name){e.setWindowsRenderer(name,false);}
+#endif
  static void theme(DuckPocketAudioProcessorEditor& e,PocketTheme t){e.setTheme(t,false);}
  static juce::Image ageFade(DuckPocketAudioProcessorEditor& e,bool gain){
   e.gainWindow=e.scopeWindow=1.;e.gainFrozen=e.scopeFrozen=false;e.gainResume=e.scopeResume=0.;
@@ -72,6 +75,17 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    if(cycle>0){e.reset(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));e->setSize(800,905);}
    e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);
    check(e->getPeer()!=nullptr,"native Windows editor peer created");
+   if(cycle==0){
+    const auto names=e->getPeer()->getAvailableRenderingEngines();
+    const int original=e->getPeer()->getCurrentRenderingEngine();
+    for(int engine=0;engine<names.size();++engine){
+     DuckUiTestAccess::renderer(*e,names[engine]);pump(20);
+     check(e->getPeer()->getCurrentRenderingEngine()==engine,"Windows renderer selection takes effect");
+     const auto image=e->createComponentSnapshot(e->getLocalBounds());
+     check(image.isValid(),"snapshot survives Windows renderer switch");
+    }
+    if(juce::isPositiveAndBelow(original,names.size()))DuckUiTestAccess::renderer(*e,names[original]);
+   }
    DuckUiTestAccess::gl(*e,true);
    check(DuckUiTestAccess::fellBack(*e),"Windows GL request is blocked before unsafe native context creation");
    if(cycle==0||cycle==99){const auto frame=e->createComponentSnapshot(e->getLocalBounds());check(frame.isValid()&&frame.getPixelAt(300,650).getAlpha()==255,"native Windows renderer paints opaque graph glass");}
