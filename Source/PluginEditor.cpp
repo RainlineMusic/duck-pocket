@@ -153,7 +153,6 @@ void ModernDial::paint(juce::Graphics& g){
     g.drawImageTransformed(ringImage,juce::AffineTransform::scale(1.f/bodyScale));
     juce::Graphics::ScopedSaveState save(g);g.addTransform(juce::AffineTransform::scale(factor));
     if(emphasis>.001f){g.setColour(t.ink.withAlpha(emphasis*.10f));g.drawEllipse(centre.x-faceRadius,centre.y-faceRadius,2*faceRadius,2*faceRadius,1.f);}
-    if(title=="Influence"&&gr>.001f){juce::Path meter;meter.addCentredArc(centre.x,centre.y,radius-7,radius-7,0,juce::MathConstants<float>::pi,juce::MathConstants<float>::pi+juce::MathConstants<float>::twoPi*gr,true);stroke(g,meter,t.out.withAlpha(.55f),1.f);}
     const auto value=displayedValue();
     g.setFont(pocketFont(valueTextHeight(value)/factor));g.setColour(t.ink);
     g.drawText(value,juce::Rectangle<float>{centre.x-faceRadius,centre.y-(compact?15.f:19.f),2*faceRadius,compact?25.f:35.f},juce::Justification::centred);
@@ -299,7 +298,9 @@ void DuckPocketAudioProcessorEditor::panel(juce::Graphics& g,juce::Rectangle<flo
     with glow, 60 times a second on the shared message thread.
 */
 void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<float> box,bool gain){
-    const bool glow=look.hasGlow();
+    // Windows draws crisp native paths. Avoid a second stroke and CPU bloom;
+    // the cached dial materials keep their glow without per-frame blur work.
+    const bool glow=look.hasGlow()&&!JUCE_WINDOWS;
     const juce::Rectangle<float> plot(box.getX()+18,box.getY()+27,box.getWidth()-52,box.getHeight()-53);
     const bool frozen=gain?gainFrozen:scopeFrozen;
     // The two-millisecond rollup preserves min/max peaks while reducing the
@@ -504,7 +505,9 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
     }else
 #endif
     {for(int i=0;i<2;++i){const float y=i?583.f:396.f;const juce::Rectangle<float> plot(50,y+27,700,107);if(!g.clipRegionIntersects(plot.toNearestInt()))continue;
-        if(i==0){graph(g,{32,y,752,160},true);continue;}
+        // On Windows use the native Graphics context directly, rather than
+        // uploading offscreen cores and compositing a full-DPI bloom on CPU.
+        if(i==0||JUCE_WINDOWS){graph(g,{32,y,752,160},i==0);continue;}
         auto& layer=softwarePlots[size_t(i)];
         const float device=g.getInternalContext().getPhysicalPixelScaleFactor();layer.prepare(juce::jmax(1,juce::roundToInt(plot.getWidth()*device)),juce::jmax(1,juce::roundToInt(plot.getHeight()*device)));
         juce::Graphics cg(layer.core);cg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(device));
@@ -606,7 +609,7 @@ void DuckPocketAudioProcessorEditor::frameTick(){
         else{displayTime+=dt;displayTime+=(target-displayTime)*.06;}
         displayTime=juce::jmin(displayTime,latest);
     }
-    influence.setMeter(currentReduction,signalPeak);attack.setMeter(0,0);duration.setMeter(0,0);
+    // Audio only invalidates the plots: the Influence dial has no live meter.
     const bool target=audioProcessor.parameters.getRawParameterValue("bypass")->load()>.5f||audioProcessor.displayBypass.load();
     if(target!=bypassTarget){
         bypassTarget=target;

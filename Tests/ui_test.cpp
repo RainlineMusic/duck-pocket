@@ -20,7 +20,8 @@ struct DuckUiTestAccess {
  static juce::Rectangle<int> resizeGrip(DuckPocketAudioProcessorEditor& e){for(auto* c:e.getChildren())if(dynamic_cast<juce::ResizableCornerComponent*>(c))return c->getBounds();return {};}
  static bool rangesVisible(DuckPocketAudioProcessorEditor& e){return e.sidechainRange.isVisible()&&e.processingRange.isVisible();}
  static bool scopeHasSignal(DuckPocketAudioProcessorEditor& e){
-  const auto& core=e.softwarePlots[1].core;if(!core.isValid())return false;
+  juce::Image core(juce::Image::ARGB,700,107,true,juce::SoftwareImageType());
+  {juce::Graphics g(core);g.addTransform(juce::AffineTransform::translation(-50.f,-610.f));e.graph(g,{32,583,752,160},false);}
   juce::Image::BitmapData data(core,juce::Image::BitmapData::readOnly);
   for(int y=0;y<data.height;++y)for(int x=0;x<data.width;++x)if(data.getPixelColour(x,y).getAlpha()>0)return true;return false;
  }
@@ -70,6 +71,31 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    e->removeFromDesktop();e.reset();
   }
   std::cout<<"PASS 100 native Windows editor peers with OpenGL disabled, total_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';
+  // Reproduce three simultaneously open editors under live audio, including
+  // HiDPI snapshots. Timing is diagnostic, not a hardware-dependent pass limit.
+  std::array<std::unique_ptr<DuckPocketAudioProcessor>,3> processors;
+  std::array<std::unique_ptr<DuckPocketAudioProcessorEditor>,3> editors;
+  for(int i=0;i<3;++i){
+   processors[size_t(i)]=std::make_unique<DuckPocketAudioProcessor>();
+   processors[size_t(i)]->setRateAndBufferSizeDetails(48000,800);processors[size_t(i)]->prepareToPlay(48000,800);
+   editors[size_t(i)].reset(static_cast<DuckPocketAudioProcessorEditor*>(processors[size_t(i)]->createEditor()));
+   editors[size_t(i)]->setSize(615,609);DuckUiTestAccess::settle(*editors[size_t(i)]);
+   editors[size_t(i)]->addToDesktop(juce::ComponentPeer::windowIsTemporary);editors[size_t(i)]->setVisible(true);
+  }
+  juce::AudioBuffer<float> samples(4,800);juce::MidiBuffer midi;
+  for(int dpi:{1,2}){
+   double captureMs=0.;
+   for(int frame=0;frame<120;++frame){
+    for(int n=0;n<800;++n){const double t=double(frame*800+n)/48000.;const float out=float(.4*std::sin(t*6.2831853*83));const float key=float(.9*std::exp(-std::fmod(t,.25)/.045)*std::sin(t*6.2831853*110));samples.setSample(0,n,out);samples.setSample(1,n,out);samples.setSample(2,n,key);samples.setSample(3,n,key);}
+    for(int i=0;i<3;++i){juce::AudioBuffer<float> input(samples);processors[size_t(i)]->processBlock(input,midi);DuckUiTestAccess::tick(*editors[size_t(i)]);}
+    const double stamp=juce::Time::getMillisecondCounterHiRes();
+    for(auto& editor:editors){const auto image=editor->createComponentSnapshot(editor->getLocalBounds(),true,float(dpi));check(image.isValid(),"three-editor playback snapshot");}
+    captureMs+=juce::Time::getMillisecondCounterHiRes()-stamp;pump(1);
+   }
+   for(auto& editor:editors){check(DuckUiTestAccess::scopeHasSignal(*editor),"all three native scopes show live signal");check(DuckUiTestAccess::plots(*editor)==std::array<std::uint64_t,2>{0,0},"Windows live graphs never allocate or composite software bloom layers");check(DuckUiTestAccess::fellBack(*editor),"three Windows editors retain native rendering");}
+   std::cout<<"PASS Windows three-editor playback DPI="<<dpi<<" full_snapshot_batch_ms="<<captureMs/120.<<'\n';
+  }
+  for(auto& editor:editors){editor->removeFromDesktop();editor.reset();}
 #else
   const double start=juce::Time::getMillisecondCounterHiRes();
   for(int cycle=0;cycle<100;++cycle){
@@ -176,6 +202,9 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  const auto historyBeforeReset=DuckUiTestAccess::historyCounts(*e);check(historyBeforeReset[0]>0&&historyBeforeReset[1]>0,"histories populated before host reset");p.reset();DuckUiTestAccess::tick(*e);check(DuckUiTestAccess::historyCounts(*e)==historyBeforeReset,"host reset preserves both graph histories");
  for(int block=0;block<150;++block){for(int sample=0;sample<64;++sample){const float v=.3f*std::sin(float(block*64+sample)*.01f);for(int channel=0;channel<4;++channel)resumed.setSample(channel,sample,v);}p.processBlock(resumed,resumeMidi);}DuckUiTestAccess::tick(*e);
  e->createComponentSnapshot(e->getLocalBounds());check(DuckUiTestAccess::scopeHasSignal(*e),"audio after stop/reset resumes visible scope immediately");
+#if JUCE_WINDOWS
+ check(DuckUiTestAccess::plots(*e)==std::array<std::uint64_t,2>{0,0},"Windows playback bypasses all CPU bloom buffers");
+#endif
  const PocketTheme themes[]{PocketTheme::Neon,PocketTheme::SolidDark,PocketTheme::Amber};const char* names[]{"neon","dark","amber"};
  juce::MidiBuffer midi;juce::AudioBuffer<float> b(4,64);
  for(int ti=0;ti<3;++ti)for(int state=0;state<3;++state){p.reset();DuckUiTestAccess::tick(*e);DuckUiTestAccess::theme(*e,themes[ti]);

@@ -84,7 +84,6 @@ public:
         return juce::String(getValue(),title=="Influence"?1:0)+(unit=="%"?"%":" ms");
     }
     juce::String balanceLabel() const {return getValue()<-.0001?"mid":(getValue()>.0001?"side":"M/S");}
-    void setMeter(float reduction,float signal){if(std::abs(gr-reduction)>.001f||std::abs(activity-signal)>.005f){gr=reduction;activity=signal;repaint();}}
     void setDurationMode(bool relative){unit=relative?"%":"ms";subtitle=relative?"Key length":"Legacy length";repaint();}
 private:
     PocketLook& look;
@@ -94,7 +93,7 @@ private:
     std::unique_ptr<juce::Drawable> heading;
     double ringValue=std::numeric_limits<double>::quiet_NaN();
     PocketTheme bodyTheme=PocketTheme::Neon;
-    float bodyScale=0,gr=0,activity=0,emphasis=0,targetEmphasis=0;
+    float bodyScale=0,emphasis=0,targetEmphasis=0;
     void animate(float target){targetEmphasis=target;startTimerHz(60);}
     void timerCallback() override {emphasis+=(targetEmphasis-emphasis)*.3f;if(std::abs(targetEmphasis-emphasis)<.01f){emphasis=targetEmphasis;stopTimer();}repaint();}
 };
