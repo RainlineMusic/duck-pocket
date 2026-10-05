@@ -61,7 +61,8 @@ void DuckPocketAudioProcessor::prepareToPlay(double sr,int)
     decimation=juce::jmax(1,int(pocket::Engine::validatedSampleRate(sr)/2400.0));
     captured=0;
     capture={};
-    traceTime=0;traceGeneration.fetch_add(1,std::memory_order_relaxed);
+    // Host transport resets DSP; the display timeline stays monotonic so
+    // both graph histories survive stop/start and prepareToPlay calls.
 }
 
 void DuckPocketAudioProcessor::reset()
@@ -69,7 +70,8 @@ void DuckPocketAudioProcessor::reset()
     engine.reset(getSampleRate(),amount->load()*.01f);
     captured=0;
     capture={};
-    traceTime=0;traceGeneration.fetch_add(1,std::memory_order_relaxed);
+    // Host transport resets DSP; the display timeline stays monotonic so
+    // both graph histories survive stop/start and prepareToPlay calls.
 }
 
 bool DuckPocketAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) const

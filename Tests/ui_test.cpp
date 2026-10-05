@@ -24,7 +24,7 @@ struct DuckUiTestAccess {
   juce::Image::BitmapData data(core,juce::Image::BitmapData::readOnly);
   for(int y=0;y<data.height;++y)for(int x=0;x<data.width;++x)if(data.getPixelColour(x,y).getAlpha()>0)return true;return false;
  }
- static bool resumeReset(DuckPocketAudioProcessorEditor& e){return e.gainResume==0&&e.scopeResume==0;}
+ static std::array<int,2> historyCounts(DuckPocketAudioProcessorEditor& e){return {e.filled,e.summaryFilled};}
  static void tick(DuckPocketAudioProcessorEditor& e){e.frameTick();}
  static void settle(DuckPocketAudioProcessorEditor& e){e.resizeStamp=0;}
  static std::array<std::uint64_t,2> plots(DuckPocketAudioProcessorEditor& e){return {e.softwarePlots[0].prepares,e.softwarePlots[1].prepares};}
@@ -138,7 +138,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  auto* outParameter=p.parameters.getParameter("outputGain");outParameter->setValueNotifyingHost(outParameter->convertTo0to1(-.1f));pump(5);check(DuckUiTestAccess::header(*e,true).displayedValue()=="-0.1 dB","header Output follows host automation");DuckUiTestAccess::header(*e,true).setValue(0,juce::sendNotificationSync);
  auto* mixParameter=p.parameters.getParameter("mix");mixParameter->setValueNotifyingHost(mixParameter->convertTo0to1(50));pump(5);check(DuckUiTestAccess::header(*e,false).displayedValue()=="50%","header Mix follows host automation");DuckUiTestAccess::header(*e,false).setValue(25,juce::sendNotificationSync);check(p.parameters.getRawParameterValue("mix")->load()==25,"numeric Mix writes the attached parameter");DuckUiTestAccess::header(*e,false).setValue(100,juce::sendNotificationSync);
  p.parameters.getParameter("legacyAttack")->setValueNotifyingHost(1);DuckUiTestAccess::attack(*e).setValue(.1,juce::sendNotificationSync);check(std::abs(p.parameters.getRawParameterValue("attack")->load()-.1f)<.001f&&p.parameters.getRawParameterValue("legacyAttack")->load()==0,"editing Attack exits migrated compatibility mode");DuckUiTestAccess::attack(*e).setValue(0,juce::sendNotificationSync);
- for(int width:{400,615,800,1500}){e->setSize(width,juce::roundToInt(width*905./800.));check(DuckUiTestAccess::layout(*e),"controls remain contained and separate during resize");}
+ for(int width:{400,615,800,1500}){e->setSize(width,juce::roundToInt(width*905./800.));check(DuckUiTestAccess::layout(*e),"controls remain contained and separate during resize");check(!DuckUiTestAccess::header(*e,false).isVisible(),"Mix is hidden from the editor");}
  DuckUiTestAccess::collapse(*e,false);check(!DuckUiTestAccess::rangesVisible(*e)&&e->getHeight()<int(e->getWidth()*905./800.),"collapse hides both filters and shortens the window");
  DuckUiTestAccess::collapse(*e,true);check(DuckUiTestAccess::rangesVisible(*e),"expand restores both filters");
  p.parameters.getParameter("bypass")->setValueNotifyingHost(1);DuckUiTestAccess::tick(*e);
@@ -173,7 +173,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  juce::AudioBuffer<float> resumed(4,64);juce::MidiBuffer resumeMidi;
  for(int i=0;i<1200;++i){resumed.clear();p.processBlock(resumed,resumeMidi);}DuckUiTestAccess::tick(*e);
  DuckUiTestAccess::freeze(*e);pump(10);DuckUiTestAccess::freeze(*e);pump(10);
- p.reset();DuckUiTestAccess::tick(*e);check(DuckUiTestAccess::resumeReset(*e),"host timeline reset discards the previous freeze cut-off");
+ const auto historyBeforeReset=DuckUiTestAccess::historyCounts(*e);check(historyBeforeReset[0]>0&&historyBeforeReset[1]>0,"histories populated before host reset");p.reset();DuckUiTestAccess::tick(*e);check(DuckUiTestAccess::historyCounts(*e)==historyBeforeReset,"host reset preserves both graph histories");
  for(int block=0;block<150;++block){for(int sample=0;sample<64;++sample){const float v=.3f*std::sin(float(block*64+sample)*.01f);for(int channel=0;channel<4;++channel)resumed.setSample(channel,sample,v);}p.processBlock(resumed,resumeMidi);}DuckUiTestAccess::tick(*e);
  e->createComponentSnapshot(e->getLocalBounds());check(DuckUiTestAccess::scopeHasSignal(*e),"audio after stop/reset resumes visible scope immediately");
  const PocketTheme themes[]{PocketTheme::Neon,PocketTheme::SolidDark,PocketTheme::Amber};const char* names[]{"neon","dark","amber"};

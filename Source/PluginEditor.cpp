@@ -167,7 +167,7 @@ DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioPr
     auto saved=preferences->getValue("duckPocket.ui.theme",preferences->getValue("phasePocket.ui.theme","solidDark"));setTheme(saved=="neon"?PocketTheme::Neon:(saved=="amber"?PocketTheme::Amber:PocketTheme::SolidDark),false);
     gainWindow=preferences->getDoubleValue("duckPocket.ui.graphWindow",preferences->getDoubleValue("duckPocket.ui.gainWindow",preferences->getDoubleValue("phasePocket.ui.gainWindow",1.)));scopeWindow=gainWindow;
     setLookAndFeel(&look);setOpaque(true);setResizable(true,true);
-    for(auto* c:std::initializer_list<juce::Component*>{&influence,&duration,&attack,&outputGain,&mix,&sidechainRange,&processingRange,&midSide,&settingsButton,&bypassButton,&freezeButton,&expandButton})addAndMakeVisible(c);
+    for(auto* c:std::initializer_list<juce::Component*>{&influence,&duration,&attack,&outputGain,&sidechainRange,&processingRange,&midSide,&settingsButton,&bypassButton,&freezeButton,&expandButton})addAndMakeVisible(c);
     influenceAttach=std::make_unique<SliderAttachment>(p.parameters,"amount",influence);durationIsRelative=p.parameters.getRawParameterValue("relativeDuration")->load()>.5f;duration.setDurationMode(durationIsRelative);durationAttach=std::make_unique<SliderAttachment>(p.parameters,durationIsRelative?"durationPercent":"duration",duration);duration.setDoubleClickReturnValue(true,durationIsRelative?100:2000);outputAttach=std::make_unique<SliderAttachment>(p.parameters,"outputGain",outputGain);outputGain.setDoubleClickReturnValue(true,0);mixAttach=std::make_unique<SliderAttachment>(p.parameters,"mix",mix);attackAttach=std::make_unique<SliderAttachment>(p.parameters,"attack",attack);attack.setDoubleClickReturnValue(true,0);attack.onDragStart=[this]{audioProcessor.parameters.getParameter("legacyAttack")->setValueNotifyingHost(0);};attack.onValueChange=[this]{audioProcessor.parameters.getParameter("legacyAttack")->setValueNotifyingHost(0);};influence.setDoubleClickReturnValue(true,100);midSide.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);midSide.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);midSide.setDoubleClickReturnValue(true,0);msAttach=std::make_unique<SliderAttachment>(p.parameters,"msBalance",midSide);midSide.onValueChange=[this]{midSide.repaint();};
     bypassButton.setClickingTogglesState(true);bypassAttach=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.parameters,"bypass",bypassButton);settingsButton.onClick=[this]{showSettingsMenu();};
     // One button freezes and resumes both graphs at once.
@@ -260,7 +260,7 @@ void DuckPocketAudioProcessorEditor::resized(){
     // A larger transparent hit box preserves clickability at compact sizes.
     freezeButton.setBounds(scaled(766.98f,709.10f,32,32));settingsButton.setBounds(scaled(716,12,31,31));bypassButton.setBounds(scaled(755,12,31,31));
     influence.setBounds(scaled(60,98.71f,240,250));duration.setBounds(scaled(503,98.71f,240,250));
-    attack.setBounds(scaled(334,88.70f,132,135));mix.setBounds(scaled(478,16.65f,63,21.7f));outputGain.setBounds(scaled(637,16.65f,63,21.7f));midSide.setBounds(scaled(334,227.70f,132,135));
+    attack.setBounds(scaled(334,88.70f,132,135));mix.setBounds(0,0,0,0);outputGain.setBounds(scaled(645,16.65f,63,21.7f));midSide.setBounds(scaled(334,227.70f,132,135));
     expandButton.setBounds(scaled(320,753,160,36));
     sidechainRange.setVisible(filtersExpanded);processingRange.setVisible(filtersExpanded);
     sidechainRange.setBounds(scaled(65,815,670,28));processingRange.setBounds(scaled(65,862,670,28));
@@ -422,7 +422,7 @@ void DuckPocketAudioProcessorEditor::paintChrome(juce::Graphics& g){
     if((!chromeValid||!chrome.isValid()||chrome.getWidth()!=w||chrome.getHeight()!=h||std::abs(chromeScale-physicalScale)>.001f)&&(!resizing||!chrome.isValid())){
         ++chromeBuildCount;chrome=juce::Image(juce::Image::ARGB,w,h,true,juce::SoftwareImageType());chromeScale=physicalScale;juce::Graphics cg(chrome);cg.addTransform(juce::AffineTransform::scale(physicalScale*float(getWidth())/800.f));const auto t=look.tokens();
         cg.setGradientFill(juce::ColourGradient(t.chassis,400,240,t.chassis.darker(.2f),0,expandedDesignHeight,true));cg.fillRect(0.f,0.f,800.f,expandedDesignHeight);
-        text(cg,"mix",{440,12,30,31},14,t.ink,juce::Justification::centredRight);text(cg,"output",{557,12,72,31},14,t.ink,juce::Justification::centredRight);
+        text(cg,"output",{565,12,72,31},14,t.ink,juce::Justification::centredRight);
         juce::Random noise(0xD0C);for(int i=0;i<6500;++i){cg.setColour((i%2?juce::Colours::white:juce::Colours::black).withAlpha(.012f));cg.fillRect(float(noise.nextInt(800)),float(noise.nextInt(int(expandedDesignHeight))),1.f,1.f);}
         auto logo=juce::Drawable::createFromImageData(BinaryData::Logo_svg,BinaryData::Logo_svgSize);
         if(logo){logo->replaceColour(juce::Colour(0xffced6e2),t.brand);logo->drawAt(cg,11.0264f,5.2672f,1.f);}
