@@ -523,7 +523,10 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
     {for(int i=0;i<2;++i){const float y=i?583.f:396.f;const juce::Rectangle<float> plot(50,y+27,700,107);if(!g.clipRegionIntersects(plot.toNearestInt()))continue;
         // On Windows use the native Graphics context directly, rather than
         // uploading offscreen cores and compositing a full-DPI bloom on CPU.
-        if(i==0||JUCE_WINDOWS||!graphGlow){graph(g,{32,y,752,160},i==0);continue;}
+#if JUCE_WINDOWS
+        graph(g,{32,y,752,160},i==0);
+#else
+        if(i==0||!graphGlow){graph(g,{32,y,752,160},i==0);continue;}
         auto& layer=softwarePlots[size_t(i)];
         const float device=g.getInternalContext().getPhysicalPixelScaleFactor();layer.prepare(juce::jmax(1,juce::roundToInt(plot.getWidth()*device)),juce::jmax(1,juce::roundToInt(plot.getHeight()*device)));
         juce::Graphics cg(layer.core);cg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(device));
@@ -531,6 +534,7 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
         const float chromeDevice=float(chrome.getWidth())/float(getWidth());auto crop=(scaled(50,y+27,700,107).toFloat()*chromeDevice).toNearestInt().getIntersection(chrome.getBounds());
         const float intensity=(gainFrozen||scopeFrozen)?0.f:1.f;
         layer.paint(g,chrome.getClippedImage(crop),plot,intensity,displayTime,i?scopeWindow:gainWindow,false);
+#endif
     }}
     if(triggerStamp>=0&&!gainFrozen){const float flash=1.f-float((juce::Time::getMillisecondCounterHiRes()-triggerStamp)/180.);if(flash>0){g.setColour(look.tokens().out.withAlpha(flash*.45f));g.fillRect(748.f,423.f,2.f,107.f);}}
     if(filtersExpanded&&g.clipRegionIntersects({48,792,704,100}))paintDynamicLabels(g);
