@@ -241,11 +241,11 @@ void DuckPocketAudioProcessorEditor::setFrozen(bool frozen){
     repaint(gainArea);repaint(scopeArea);
 }
 void DuckPocketAudioProcessorEditor::showSettingsMenu(){juce::PopupMenu root,window,theme;for(size_t i=0;i<windows.size();++i)window.addItem(int(i)+1,timeLabel(windows[i]),true,std::abs(gainWindow-windows[i])<1e-6);theme.addItem(201,"Neon",true,look.theme==PocketTheme::Neon);theme.addItem(204,"Amber",true,look.theme==PocketTheme::Amber);theme.addItem(202,"Solid Dark",true,look.theme==PocketTheme::SolidDark);root.addSubMenu("Graph window",window);root.addSeparator();root.addSubMenu("Theme",theme);
-#if DUCK_ENABLE_OPENGL
+#if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
 root.addSeparator();root.addItem(401,"OpenGL (experimental)",true,glowRenderer!=nullptr);
 #endif
 root.addSeparator();root.addItem(301,"Percentage Duration",true,durationIsRelative);auto safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this);root.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(settingsButton),[safe](int id){if(!safe||id==0)return;
-#if DUCK_ENABLE_OPENGL
+#if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
 if(id==401){safe->setOpenGL(safe->glowRenderer==nullptr);return;}
 #endif
 if(id>=1&&id<=6)safe->setHistoryWindow(windows[size_t(id-1)]);else if(id==301){auto* prm=safe->audioProcessor.parameters.getParameter("relativeDuration");prm->beginChangeGesture();prm->setValueNotifyingHost(safe->durationIsRelative?0.f:1.f);prm->endChangeGesture();safe->syncDurationMode();}else if(id==201)safe->setTheme(PocketTheme::Neon);else if(id==204)safe->setTheme(PocketTheme::Amber);else if(id==202)safe->setTheme(PocketTheme::SolidDark);});}
@@ -556,12 +556,16 @@ void DuckPocketAudioProcessorEditor::paintOverChildren(juce::Graphics& g){
     text(g,"BYPASSED",centre,size,ink,juce::Justification::centred,look.isDark()?.1f:0.f);
 }
 void DuckPocketAudioProcessorEditor::parentHierarchyChanged(){
-#if DUCK_ENABLE_OPENGL
+#if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
     if(getPeer()&&preferences&&preferences->getBoolValue("duckPocket.ui.opengl.v3",false)&&!glowRenderer)setOpenGL(true,false);
 #endif
 }
 #if DUCK_ENABLE_OPENGL
 void DuckPocketAudioProcessorEditor::setOpenGL(bool enabled,bool persist){
+#if JUCE_WINDOWS
+    // Native peer probe crashes with 0xC0000005 before graceful GL fallback.
+    enabled=false;
+#endif
     if(enabled&&glowRenderer)return;
     if(glowRenderer){glowRenderer->stop();glowRenderer.reset();}
     lastGpuFrame.reset();for(auto& phosphor:gpuPhosphor)phosphor.reset();glWasReady=false;setOpaque(!enabled);
