@@ -7,8 +7,8 @@
 // touches this renderer, images, locks, OpenGL, or JUCE Components.
 class PocketGlowRenderer final : public juce::OpenGLRenderer {
 public:
-    struct Plot {juce::Rectangle<int> bounds;juce::Image background,emission;float intensity=0;};
-    struct Frame {std::array<Plot,2> plots;int width=1,height=1;std::uint64_t chromeRevision=0;};
+    struct Plot {juce::Rectangle<int> bounds;juce::Image background,core,emission;float intensity=0;};
+    struct Frame {std::array<Plot,2> plots;int width=1,height=1;std::uint64_t chromeRevision=0;double time=0;float rasterScale=1;bool frozen=false;};
     juce::OpenGLContext context;
     std::atomic<bool> ready{false},failed{false},presented{false};
     std::atomic<std::uint64_t> frames{0},blurredFrames{0},presentedRevision{0};
@@ -18,7 +18,13 @@ public:
     void attach(juce::Component& target){failed.store(false);context.attachTo(target);}
     void stop(){context.setContinuousRepainting(false);context.detach();ready.store(false);presented.store(false);}
     void publish(std::shared_ptr<const Frame> next){
-        {std::lock_guard<std::mutex> guard(exchange);pending=std::move(next);}
+        {std::lock_guard<std::mutex> guard(exchange);
+            // Component painting follows renderOpenGL. Avoid publishing the
+            // identical snapshot forever through our own triggerRepaint.
+            if(pending&&pending->time==next->time&&pending->chromeRevision==next->chromeRevision
+               &&pending->width==next->width&&pending->height==next->height
+               &&pending->rasterScale==next->rasterScale&&pending->frozen==next->frozen)return;
+            pending=std::move(next);}
         // Component painting publishes after renderOpenGL. Present this frame
         // even when transport is stopped and no next audio/UI tick is coming.
         context.triggerRepaint();
@@ -49,7 +55,7 @@ public:
         ready.store(true);
     }
     void openGLContextClosing() override {
-        ready.store(false);presented.store(false);lastFrame.reset();for(auto& p:resources){p.base.release();p.mask.release();p.horizontal.release();p.vertical.release();p.chromeRevision=std::numeric_limits<std::uint64_t>::max();}
+        ready.store(false);presented.store(false);lastFrame.reset();for(auto& p:resources){p.base.release();p.core.release();p.mask.release();p.horizontal.release();p.vertical.release();p.chromeRevision=std::numeric_limits<std::uint64_t>::max();}
         if(vertexBuffer){context.extensions.glDeleteBuffers(1,&vertexBuffer);}
         if(vertexArray){context.extensions.glDeleteVertexArrays(1,&vertexArray);}
         vertexBuffer=vertexArray=0;copyProgram.reset();blurProgram.reset();
@@ -70,25 +76,31 @@ public:
         context.extensions.glBindVertexArray(vertexArray);
         for(size_t i=0;i<resources.size();++i){auto& r=resources[i];const auto& plot=frame->plots[i];if(!plot.background.isValid())continue;
             if(r.chromeRevision!=frame->chromeRevision){r.base.loadImage(plot.background);r.chromeRevision=frame->chromeRevision;}
-            if(frame!=lastFrame&&plot.emission.isValid())r.mask.loadImage(plot.emission);
+            if(frame!=lastFrame){
+                if(plot.emission.isValid())r.mask.loadImage(plot.emission);
+                if(plot.core.isValid())r.core.loadImage(plot.core);
+            }
             if(plot.intensity>.001f&&plot.emission.isValid()){
                 const int w=plot.emission.getWidth(),h=plot.emission.getHeight();
                 if(r.horizontal.getWidth()!=w||r.horizontal.getHeight()!=h){
                     if(!r.horizontal.initialise(context,w,h)||!r.vertical.initialise(context,w,h)){failed.store(true);ready.store(false);return;}}
-                r.horizontal.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.mask.getTextureID(),4.f/float(w),0,1);
-                r.vertical.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.horizontal.getTextureID(),0,4.f/float(h),1);
+                r.horizontal.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.mask.getTextureID(),1.f/float(w),0,1);
+                r.vertical.makeCurrentAndClear();glViewport(0,0,w,h);draw(*blurProgram,r.horizontal.getTextureID(),0,1.f/float(h),1);
                 blurredFrames.fetch_add(1,std::memory_order_relaxed);
             }
             context.extensions.glBindFramebuffer(GL_FRAMEBUFFER,defaultTarget);
             const auto bounds=plot.bounds.toFloat()*plotScale;glViewport(juce::roundToInt(bounds.getX()),vh-juce::roundToInt(bounds.getBottom()),juce::roundToInt(bounds.getWidth()),juce::roundToInt(bounds.getHeight()));
             glDisable(GL_BLEND);draw(*copyProgram,r.base.getTextureID(),0,0,1);
             if(plot.intensity>.001f&&plot.emission.isValid()){glEnable(GL_BLEND);glBlendFunc(GL_ONE,GL_ONE);draw(*copyProgram,r.vertical.getTextureID(),0,0,plot.intensity);glDisable(GL_BLEND);}
+            // Crisp trace and bloom come from this same immutable snapshot.
+            // If rendering falls behind, pending replaces it; no frame queue.
+            if(plot.core.isValid()){glEnable(GL_BLEND);glBlendFunc(GL_ONE,GL_ONE_MINUS_SRC_ALPHA);draw(*copyProgram,r.core.getTextureID(),0,0,1);glDisable(GL_BLEND);}
         }
         presentedLogicalHeight.store(juce::roundToInt(float(vh)/scale));presentedRevision.store(frame->chromeRevision);presented.store(true);lastFrame=frame;context.extensions.glBindFramebuffer(GL_FRAMEBUFFER,defaultTarget);glViewport(0,0,vw,vh);
         context.extensions.glBindBuffer(GL_ARRAY_BUFFER,0);context.extensions.glBindVertexArray(0);
     }
 private:
-    struct Resources {std::uint64_t chromeRevision=std::numeric_limits<std::uint64_t>::max();juce::OpenGLTexture base,mask;juce::OpenGLFrameBuffer horizontal,vertical;};
+    struct Resources {std::uint64_t chromeRevision=std::numeric_limits<std::uint64_t>::max();juce::OpenGLTexture base,core,mask;juce::OpenGLFrameBuffer horizontal,vertical;};
     std::array<Resources,2> resources;
     std::unique_ptr<juce::OpenGLShaderProgram> copyProgram,blurProgram;
     GLuint vertexBuffer=0,vertexArray=0;
