@@ -3,7 +3,13 @@
 #include <cstdlib>
 struct DuckUiTestAccess {
  static void theme(DuckPocketAudioProcessorEditor& e,PocketTheme t){e.setTheme(t,false);}
- static void glow(DuckPocketAudioProcessorEditor& e,bool enabled){e.setGraphGlow(enabled,false);}
+ static juce::Image ageFade(DuckPocketAudioProcessorEditor& e,bool gain){
+  e.gainWindow=e.scopeWindow=1.;e.gainFrozen=e.scopeFrozen=false;e.gainResume=e.scopeResume=0.;
+  e.filled=e.cursor=2400;e.displayTime=1.;
+  for(int i=0;i<2400;++i){auto& v=e.history[size_t(i)];v.time=double(i)/2400.;v.gain=.5f;v.outLo=v.keyLo=-.5f;v.outHi=v.keyHi=.5f;}
+  juce::Image image(juce::Image::ARGB,700,107,true,juce::SoftwareImageType());
+  juce::Graphics g(image);const float y=gain?396.f:583.f;g.addTransform(juce::AffineTransform::translation(-50.f,-y-27.f));e.graph(g,{32,y,752,160},gain);return image;
+ }
  static HeaderValue& header(DuckPocketAudioProcessorEditor& e,bool output){return output?e.outputGain:e.mix;}
  static ModernDial& attack(DuckPocketAudioProcessorEditor& e){return e.attack;}
  static ModernDial& balance(DuckPocketAudioProcessorEditor& e){return e.midSide;}
@@ -57,7 +63,6 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  DuckPocketAudioProcessor p;p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
  if(glSmoke)std::cerr<<"GL_PROBE_PROCESSOR_READY\n";
  std::unique_ptr<DuckPocketAudioProcessorEditor> e(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));const bool native=argc>2&&juce::String(argv[2])=="--native";if(native){e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);}if(!glSmoke)check(!DuckUiTestAccess::rangesVisible(*e),"fresh filter panel defaults closed");DuckUiTestAccess::collapse(*e,true);e->setSize(800,905);DuckUiTestAccess::settle(*e);
- DuckUiTestAccess::glow(*e,true);
  if(glSmoke)std::cerr<<"GL_PROBE_EDITOR_READY\n";
  if(glSmoke){
 #if DUCK_ENABLE_OPENGL
@@ -82,7 +87,6 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    processors[size_t(i)]->setRateAndBufferSizeDetails(48000,800);processors[size_t(i)]->prepareToPlay(48000,800);
    editors[size_t(i)].reset(static_cast<DuckPocketAudioProcessorEditor*>(processors[size_t(i)]->createEditor()));
    editors[size_t(i)]->setSize(615,609);DuckUiTestAccess::settle(*editors[size_t(i)]);
-   DuckUiTestAccess::glow(*editors[size_t(i)],true);
    editors[size_t(i)]->addToDesktop(juce::ComponentPeer::windowIsTemporary);editors[size_t(i)]->setVisible(true);
   }
   juce::AudioBuffer<float> samples(4,800);juce::MidiBuffer midi;
@@ -126,14 +130,14 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    }
    for(int poll=0;poll<75&&!(cycle==0?DuckUiTestAccess::blurredFrames(*e)>0:DuckUiTestAccess::rendered(*e));++poll){DuckUiTestAccess::trigger(*e);pump(20);}
    check(DuckUiTestAccess::rendered(*e),"native GPU composed a graph frame");
-   if(cycle==0)check(DuckUiTestAccess::blurredFrames(*e)>0,"native GPU blur rendered a live signal");
+   check(DuckUiTestAccess::blurredFrames(*e)==0,"native GPU live graphs never run a blur pass");
    if(cycle==0){const auto previous=DuckUiTestAccess::gpuRevision(*e);DuckUiTestAccess::theme(*e,PocketTheme::Amber);for(int poll=0;poll<75&&!DuckUiTestAccess::themePresented(*e,previous);++poll)pump(20);check(DuckUiTestAccess::themePresented(*e,previous),"paused GPU presents the new theme without audio");}
    if(cycle==0){for(int fold=0;fold<10;++fold){const int width=e->getWidth();DuckUiTestAccess::collapse(*e,(fold%2)==0);
     for(int poll=0;poll<75&&DuckUiTestAccess::gpuHeight(*e)!=e->getHeight();++poll){DuckUiTestAccess::trigger(*e);pump(20);}
     check(e->getWidth()==width,"native fold preserves width");check(DuckUiTestAccess::gpuHeight(*e)==e->getHeight(),"native GPU uses live drawable height after paused fold");}}
    DuckUiTestAccess::gl(*e,false);e->removeFromDesktop();e.reset();
   }
-  std::cout<<"PASS native OpenGL glow and 100 editor peer lifecycles, total_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';
+  std::cout<<"PASS native OpenGL traces without bloom and 100 editor peer lifecycles, total_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';
 #endif
 #else
   std::cout<<"SKIP OpenGL is disabled at compile time\n";
@@ -209,13 +213,15 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  check(DuckUiTestAccess::plots(*e)==std::array<std::uint64_t,2>{0,0},"Windows playback bypasses all CPU bloom buffers");
 #endif
  const PocketTheme themes[]{PocketTheme::Neon,PocketTheme::SolidDark,PocketTheme::Amber};const char* names[]{"neon","dark","amber"};
- const auto glowOn=e->createComponentSnapshot(e->getLocalBounds());
- const auto chromeBeforeGlowToggle=DuckUiTestAccess::caches(*e);
- DuckUiTestAccess::glow(*e,false);const auto glowOff=e->createComponentSnapshot(e->getLocalBounds());
- check(DuckUiTestAccess::caches(*e)==chromeBeforeGlowToggle,"glow toggle reuses static materials and dial caches");
- check(DuckUiTestAccess::scopeHasSignal(*e),"glow off retains the live waveform");
- for(int top:{423,610}){bool different=false;for(int y=top;y<top+107&&!different;++y)for(int x=50;x<750;++x)if(glowOn.getPixelAt(x,y)!=glowOff.getPixelAt(x,y)){different=true;break;}check(different,"glow toggle affects each graph without new audio");}
- DuckUiTestAccess::glow(*e,true);
+ {
+  auto fadeProcessor=std::make_unique<DuckPocketAudioProcessor>();
+  std::unique_ptr<DuckPocketAudioProcessorEditor> fadeEditor(static_cast<DuckPocketAudioProcessorEditor*>(fadeProcessor->createEditor()));
+  for(auto theme:themes){DuckUiTestAccess::theme(*fadeEditor,theme);for(bool gain:{false,true}){
+   const auto image=DuckUiTestAccess::ageFade(*fadeEditor,gain);std::uint64_t left=0,right=0;
+   for(int y=0;y<107;++y)for(int x=50;x<150;++x){left+=image.getPixelAt(x,y).getAlpha();right+=image.getPixelAt(x+500,y).getAlpha();}
+   check(left>0&&right>left*2,"both graph cores fade towards older data in every theme");
+  }}
+ }
  juce::MidiBuffer midi;juce::AudioBuffer<float> b(4,64);
  for(int ti=0;ti<3;++ti)for(int state=0;state<3;++state){p.reset();DuckUiTestAccess::tick(*e);DuckUiTestAccess::theme(*e,themes[ti]);
   for(int block=0;block<750;++block){for(int i=0;i<64;++i){const int n=block*64+i;const double time=double(n)/48000.,hit=std::fmod(time,.25);

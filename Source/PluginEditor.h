@@ -133,7 +133,6 @@ private:
     bool glWasReady=false;
     void setOpenGL(bool enabled,bool persist=true);
 #endif
-    juce::Graphics* emissionGraphics=nullptr;
     std::array<PocketSoftwareGlow,2> softwarePlots;
     double triggerStamp=-1;
     using SliderAttachment=juce::AudioProcessorValueTreeState::SliderAttachment;
@@ -173,7 +172,8 @@ private:
     double gainWindow=1.,scopeWindow=1.;
     std::uint32_t traceGeneration=0;
     bool durationIsRelative=false;
-    bool graphGlow=true;
+    // Reference-coordinate gradients, rebuilt only when the theme changes.
+    std::array<juce::ColourGradient,6> traceFades;
     void syncDurationMode();
     juce::Image blurredSnapshot,chrome;
     bool chromeValid=false;
@@ -192,7 +192,6 @@ private:
     void syncProcessingRange();
     void saveSize();
     void setTheme(PocketTheme,bool persist=true);
-    void setGraphGlow(bool enabled,bool persist=true);
     void showSettingsMenu();
     void setHistoryWindow(double seconds);
     void captureBlurSnapshot();

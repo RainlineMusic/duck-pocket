@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 namespace {
+juce::ColourGradient traceFade(juce::Colour colour){return {colour.withMultipliedAlpha(.08f),50.f,0.f,colour,750.f,0.f,false};}
 juce::Font uiFont(float size){return pocketFont(size);}
 // Written as raw UTF-8 bytes on purpose: a \u escape in a narrow literal gets
 // transcoded to the compiler's execution charset (MSVC without /utf-8 turns it
@@ -162,7 +163,6 @@ void ModernDial::paint(juce::Graphics& g){
 
 DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioProcessor& p):AudioProcessorEditor(&p),audioProcessor(p){
     juce::PropertiesFile::Options o;o.applicationName="DuckPocket";o.filenameSuffix="settings";o.folderName="RainlineMusic";o.osxLibrarySubFolder="Application Support";preferences=std::make_unique<juce::PropertiesFile>(o);
-    graphGlow=preferences->getBoolValue("duckPocket.ui.graphGlow",true);
     // Solid Dark is the default theme; a stored preference still wins.
     auto saved=preferences->getValue("duckPocket.ui.theme",preferences->getValue("phasePocket.ui.theme","solidDark"));setTheme(saved=="neon"?PocketTheme::Neon:(saved=="amber"?PocketTheme::Amber:PocketTheme::SolidDark),false);
     gainWindow=preferences->getDoubleValue("duckPocket.ui.graphWindow",preferences->getDoubleValue("duckPocket.ui.gainWindow",preferences->getDoubleValue("phasePocket.ui.gainWindow",1.)));scopeWindow=gainWindow;
@@ -208,21 +208,15 @@ DuckPocketAudioProcessorEditor::~DuckPocketAudioProcessorEditor(){vblank.reset()
 void DuckPocketAudioProcessorEditor::saveSize(){if(!ready||!preferences)return;audioProcessor.editorWidth.store(getWidth());preferences->setValue("duckPocket.ui.compactWidth",getWidth());preferences->saveIfNeeded();resizeStamp=0;}
 void DuckPocketAudioProcessorEditor::invalidateChrome(){chromeValid=false;repaint();}
 void DuckPocketAudioProcessorEditor::setTheme(PocketTheme t,bool persist){if(t==PocketTheme::SolidWhite)t=PocketTheme::SolidDark;look.theme=t;if(persist&&preferences){preferences->setValue("duckPocket.ui.theme",t==PocketTheme::Neon?"neon":(t==PocketTheme::Amber?"amber":(t==PocketTheme::SolidDark?"solidDark":"solidDark")));preferences->saveIfNeeded();}chromeValid=false;for(auto& layer:softwarePlots)layer.reset();
+    const auto tokens=look.tokens();
+    traceFades={traceFade(tokens.out.withAlpha(.43f)),traceFade(tokens.out.brighter(.35f)),
+                traceFade(tokens.out.brighter(.18f).withAlpha(.65f)),traceFade(tokens.out.brighter(.35f)),
+                traceFade(tokens.key.brighter(.18f).withAlpha(.65f)),traceFade(tokens.key.brighter(.35f))};
 #if DUCK_ENABLE_OPENGL
     for(auto& phosphor:gpuPhosphor)phosphor.reset();
 #endif
     repaint();for(auto* c:getChildren())c->repaint();if(bypassMix>0)juce::MessageManager::callAsync([safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this)]{if(safe)safe->captureBlurSnapshot();});}
 void DuckPocketAudioProcessorEditor::setHistoryWindow(double seconds){gainWindow=scopeWindow=seconds;preferences->setValue("duckPocket.ui.graphWindow",seconds);preferences->saveIfNeeded();invalidateChrome();}
-void DuckPocketAudioProcessorEditor::setGraphGlow(bool enabled,bool persist){
-    graphGlow=enabled;
-    if(persist&&preferences){preferences->setValue("duckPocket.ui.graphGlow",enabled);preferences->saveIfNeeded();}
-    for(auto& layer:softwarePlots)layer.reset();
-#if DUCK_ENABLE_OPENGL
-    lastGpuFrame.reset();for(auto& phosphor:gpuPhosphor)phosphor.reset();
-#endif
-    repaint(gainArea);repaint(scopeArea);
-    if(bypassMix>0)juce::MessageManager::callAsync([safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this)]{if(safe){safe->captureBlurSnapshot();safe->repaint(safe->blurArea);}});
-}
 // A single snowflake button freezes and resumes both graphs together.
 void DuckPocketAudioProcessorEditor::setFrozen(bool frozen){
     triggerStamp=-1;gainFrozen=scopeFrozen=frozen;frozenGain.clear();frozenSummary.clear();
@@ -243,12 +237,10 @@ void DuckPocketAudioProcessorEditor::setFrozen(bool frozen){
     repaint(gainArea);repaint(scopeArea);
 }
 void DuckPocketAudioProcessorEditor::showSettingsMenu(){juce::PopupMenu root,window,theme;for(size_t i=0;i<windows.size();++i)window.addItem(int(i)+1,timeLabel(windows[i]),true,std::abs(gainWindow-windows[i])<1e-6);theme.addItem(201,"Neon",true,look.theme==PocketTheme::Neon);theme.addItem(204,"Amber",true,look.theme==PocketTheme::Amber);theme.addItem(202,"Solid Dark",true,look.theme==PocketTheme::SolidDark);root.addSubMenu("Graph window",window);root.addSeparator();root.addSubMenu("Theme",theme);
-root.addSeparator();root.addItem(402,"Graph glow",true,graphGlow);
 #if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
 root.addSeparator();root.addItem(401,"OpenGL (experimental)",true,glowRenderer!=nullptr);
 #endif
 root.addSeparator();root.addItem(301,"Percentage Duration",true,durationIsRelative);auto safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this);root.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(settingsButton),[safe](int id){if(!safe||id==0)return;
-if(id==402){safe->setGraphGlow(!safe->graphGlow);return;}
 #if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
 if(id==401){safe->setOpenGL(safe->glowRenderer==nullptr);return;}
 #endif
@@ -311,7 +303,6 @@ void DuckPocketAudioProcessorEditor::panel(juce::Graphics& g,juce::Rectangle<flo
     with glow, 60 times a second on the shared message thread.
 */
 void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<float> box,bool gain){
-    const bool glow=graphGlow&&look.hasGlow();
     const juce::Rectangle<float> plot(box.getX()+18,box.getY()+27,box.getWidth()-52,box.getHeight()-53);
     const bool frozen=gain?gainFrozen:scopeFrozen;
     // The two-millisecond rollup preserves min/max peaks while reducing the
@@ -325,12 +316,6 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
     // Smoothed display clock (see frameTick) instead of "time of the newest packet",
     // which advances in audio-block sized steps and made the whole graph stutter.
     const double now=(frozen||displayTime<=0.)?at(count-1).time:displayTime;
-    const auto label=look.tokens().out;
-    auto emit=[&](const juce::Path& path,juce::Colour colour,float width,float strength=1.f){
-        if(!glow)return;
-        colour=colour.withMultipliedAlpha(strength);
-        if(emissionGraphics){emissionGraphics->setColour(colour);emissionGraphics->strokePath(path,juce::PathStrokeType(width,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
-    };
     juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(plot.toNearestInt());
     // Column count must track *physical* pixels, not the fixed 800-wide design
     // rect. `g` already carries the editor's own upscale transform (paint()
@@ -379,12 +364,9 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
         for(int c=0;c<columns;++c)if(bucketLo[size_t(c)]<=1.f)pathPoints.push_back({xOf(c),plot.getBottom()-bucketLo[size_t(c)]*plot.getHeight()});
         if(pathPoints.size()>1){
             juce::Path fill;fill.startNewSubPath(pathPoints.front());for(const auto& point:pathPoints)fill.lineTo(point);fill.lineTo(pathPoints.back().x,plot.getY());fill.lineTo(pathPoints.front().x,plot.getY());fill.closeSubPath();
-            g.setGradientFill(juce::ColourGradient(label.withAlpha(.10f),0,plot.getY(),label.withAlpha(.43f),0,plot.getBottom(),false));g.fillPath(fill);
-            // A tight native halo, with no history accumulation or delayed tail.
+            g.setGradientFill(traceFades[0]);g.fillPath(fill);
             juce::Path path;path.startNewSubPath(pathPoints.front());for(size_t i=1;i<pathPoints.size();++i)path.lineTo(pathPoints[i]);
-            float depth=0;for(float value:bucketLo)if(value<=1.f)depth=juce::jmax(depth,1.f-value);
-            if(glow&&depth>.001f){g.setColour(label.withAlpha(.16f*depth));g.strokePath(path,juce::PathStrokeType(3.5f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
-            g.setColour(label.brighter(.35f));g.strokePath(path,juce::PathStrokeType(1.65f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            g.setGradientFill(traceFades[1]);g.strokePath(path,juce::PathStrokeType(1.65f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         }
         return;
     }
@@ -406,7 +388,6 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
         constexpr float silenceThreshold=.004f;
         const float midY=plot.getCentreY();
         auto active=[&](int c){const float lo=bucketLo[size_t(c)],hi=bucketHi[size_t(c)];return hi>=lo&&juce::jmax(std::abs(lo),std::abs(hi))>silenceThreshold;};
-        const auto colour=kind?look.tokens().key:look.tokens().out;
         for(int c=0;c<columns;){
             if(!active(c)){++c;continue;}
             int e=c;while(e+1<columns&&active(e+1))++e;
@@ -415,7 +396,7 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
             pathTop.push_back({x0,midY});pathBottom.push_back({x0,midY});
             for(int i=c;i<=e;++i){const float x=xOf(i);pathTop.push_back({x,midY-bucketHi[size_t(i)]*plot.getHeight()*.5f});pathBottom.push_back({x,midY-bucketLo[size_t(i)]*plot.getHeight()*.5f});}
             pathTop.push_back({x1,midY});pathBottom.push_back({x1,midY});
-            const int firstColumn=c,lastColumn=e;c=e+1;
+            c=e+1;
             juce::Path body;
             body.startNewSubPath(pathTop.front());
             if(longWindow){for(size_t i=1;i<pathTop.size();++i)body.lineTo(pathTop[i]);}
@@ -424,9 +405,9 @@ void DuckPocketAudioProcessorEditor::graph(juce::Graphics& g,juce::Rectangle<flo
             if(longWindow){for(size_t i=pathBottom.size()-1;i>0;--i)body.lineTo(pathBottom[i-1]);}
             else for(size_t i=pathBottom.size()-1;i>1;--i)body.quadraticTo(pathBottom[i-1],(pathBottom[i-1]+pathBottom[i-2])*.5f);
             body.lineTo(pathBottom.front());body.closeSubPath();
-            if(!emissionGraphics&&glow&&!longWindow&&!frozen){g.setColour(colour.withAlpha(.12f));g.strokePath(body,juce::PathStrokeType(3.5f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
-            // No outline: the wave itself is filled with the colour the outline used to have.
-            g.setColour(colour.brighter(.18f).withAlpha(.65f));g.fillPath(body);g.setColour(colour.brighter(.35f));g.strokePath(body,juce::PathStrokeType(1.1f));float strength=0;for(int column=firstColumn;column<=lastColumn;++column)if(bucketHi[size_t(column)]>=bucketLo[size_t(column)])strength=juce::jmax(strength,std::abs(bucketLo[size_t(column)]),std::abs(bucketHi[size_t(column)]));emit(body,colour.brighter(.35f),4.f,juce::jlimit(0.f,1.f,strength));
+            // Age fade is part of the existing fill/stroke, with no extra pass.
+            g.setGradientFill(traceFades[kind?4:2]);g.fillPath(body);
+            g.setGradientFill(traceFades[kind?5:3]);g.strokePath(body,juce::PathStrokeType(1.1f));
         }
     }
 }
@@ -509,12 +490,7 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
             const float coreScale=g.getInternalContext().getPhysicalPixelScaleFactor();
             layer.core=juce::Image(juce::Image::ARGB,juce::jmax(1,juce::roundToInt(plot.getWidth()*coreScale)),juce::jmax(1,juce::roundToInt(plot.getHeight()*coreScale)),true,juce::SoftwareImageType());
             juce::Graphics cg(layer.core);cg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(coreScale));
-            if(graphGlow){
-                const float raster=coreScale*.5f;
-                layer.emission=juce::Image(juce::Image::ARGB,juce::jmax(1,juce::roundToInt(plot.getWidth()*raster)),juce::jmax(1,juce::roundToInt(plot.getHeight()*raster)),true,juce::SoftwareImageType());
-                juce::Graphics eg(layer.emission);eg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(raster));emissionGraphics=&eg;graph(cg,{32,y,752,160},i==0);emissionGraphics=nullptr;
-            }else graph(cg,{32,y,752,160},i==0);
-            layer.intensity=(gainFrozen||scopeFrozen||!PocketSoftwareGlow::hasEmission(layer.emission))?0.f:1.f;
+            graph(cg,{32,y,752,160},i==0);layer.intensity=0.f;
         }
         lastGpuFrame=frame;glowRenderer->publish(std::move(frame));
         }
@@ -523,18 +499,7 @@ void DuckPocketAudioProcessorEditor::paint(juce::Graphics& g){
     {for(int i=0;i<2;++i){const float y=i?583.f:396.f;const juce::Rectangle<float> plot(50,y+27,700,107);if(!g.clipRegionIntersects(plot.toNearestInt()))continue;
         // On Windows use the native Graphics context directly, rather than
         // uploading offscreen cores and compositing a full-DPI bloom on CPU.
-#if JUCE_WINDOWS
         graph(g,{32,y,752,160},i==0);
-#else
-        if(i==0||!graphGlow){graph(g,{32,y,752,160},i==0);continue;}
-        auto& layer=softwarePlots[size_t(i)];
-        const float device=g.getInternalContext().getPhysicalPixelScaleFactor();layer.prepare(juce::jmax(1,juce::roundToInt(plot.getWidth()*device)),juce::jmax(1,juce::roundToInt(plot.getHeight()*device)));
-        juce::Graphics cg(layer.core);cg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(device));
-        juce::Graphics eg(layer.emission);const float raster=float(layer.emission.getWidth())/plot.getWidth();eg.addTransform(juce::AffineTransform::translation(-plot.getX(),-plot.getY()).scaled(raster));emissionGraphics=&eg;graph(cg,{32,y,752,160},i==0);emissionGraphics=nullptr;
-        const float chromeDevice=float(chrome.getWidth())/float(getWidth());auto crop=(scaled(50,y+27,700,107).toFloat()*chromeDevice).toNearestInt().getIntersection(chrome.getBounds());
-        const float intensity=(gainFrozen||scopeFrozen)?0.f:1.f;
-        layer.paint(g,chrome.getClippedImage(crop),plot,intensity,displayTime,i?scopeWindow:gainWindow,false);
-#endif
     }}
     if(triggerStamp>=0&&!gainFrozen){const float flash=1.f-float((juce::Time::getMillisecondCounterHiRes()-triggerStamp)/180.);if(flash>0){g.setColour(look.tokens().out.withAlpha(flash*.45f));g.fillRect(748.f,423.f,2.f,107.f);}}
     if(filtersExpanded&&g.clipRegionIntersects({48,792,704,100}))paintDynamicLabels(g);
@@ -570,7 +535,7 @@ void DuckPocketAudioProcessorEditor::paintOverChildren(juce::Graphics& g){
 }
 void DuckPocketAudioProcessorEditor::parentHierarchyChanged(){
 #if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
-    if(getPeer()&&preferences&&preferences->getBoolValue("duckPocket.ui.opengl.v2",true)&&!glowRenderer)setOpenGL(true,false);
+    if(getPeer()&&preferences&&preferences->getBoolValue("duckPocket.ui.opengl.v3",false)&&!glowRenderer)setOpenGL(true,false);
 #endif
 }
 #if DUCK_ENABLE_OPENGL
@@ -583,7 +548,7 @@ void DuckPocketAudioProcessorEditor::setOpenGL(bool enabled,bool persist){
     if(glowRenderer){glowRenderer->stop();glowRenderer.reset();}
     lastGpuFrame.reset();for(auto& phosphor:gpuPhosphor)phosphor.reset();glWasReady=false;setOpaque(!enabled);
     if(enabled&&getPeer()){glowRenderer=std::make_unique<PocketGlowRenderer>();glAttachTime=juce::Time::getMillisecondCounterHiRes();glowRenderer->attach(*this);}
-    if(persist&&preferences){preferences->setValue("duckPocket.ui.opengl.v2",enabled);preferences->saveIfNeeded();}
+    if(persist&&preferences){preferences->setValue("duckPocket.ui.opengl.v3",enabled);preferences->saveIfNeeded();}
     invalidateChrome();
 }
 #endif
