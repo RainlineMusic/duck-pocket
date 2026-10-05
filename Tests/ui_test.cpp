@@ -1,9 +1,15 @@
 #include "PluginEditor.h"
 #include <iostream>
 #include <cstdlib>
+#include <thread>
+#include <chrono>
+#if JUCE_WINDOWS
+#include <windows.h>
+#endif
 struct DuckUiTestAccess {
 #if JUCE_WINDOWS
  static void renderer(DuckPocketAudioProcessorEditor& e,const juce::String& name){e.setWindowsRenderer(name,false);}
+ static std::uint64_t nativeCaches(DuckPocketAudioProcessorEditor& e){return e.nativeChromeBuildCount;}
 #endif
  static void theme(DuckPocketAudioProcessorEditor& e,PocketTheme t){e.setTheme(t,false);}
  static juce::Image ageFade(DuckPocketAudioProcessorEditor& e,bool gain){
@@ -62,6 +68,16 @@ static void check(bool v,const char* message){if(!v){std::cerr<<"FAIL "<<message
 // width and cache identity are also checked independently.
 static bool samePixel(juce::Colour a,juce::Colour b){return a.getAlpha()==b.getAlpha()&&std::abs(int(a.getRed())-int(b.getRed()))<=1&&std::abs(int(a.getGreen())-int(b.getGreen()))<=1&&std::abs(int(a.getBlue())-int(b.getBlue()))<=1;}
 static void pump(int milliseconds){juce::MessageManager::getInstance()->runDispatchLoopUntil(milliseconds);}
+#if JUCE_WINDOWS
+// WM_TIMER has lower priority than input. A continuously serviced heartbeat
+// catches message-queue starvation that software snapshots cannot reveal.
+static double heartbeatLast=0,heartbeatMax=0;
+static int heartbeatCount=0;
+static void CALLBACK heartbeat(HWND,UINT,UINT_PTR,DWORD){
+ const double now=juce::Time::getMillisecondCounterHiRes();
+ heartbeatMax=juce::jmax(heartbeatMax,now-heartbeatLast);heartbeatLast=now;++heartbeatCount;
+}
+#endif
 int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=="--gl-smoke";if(glSmoke)std::cerr<<"GL_PROBE_START\n";juce::ScopedJuceInitialiser_GUI init;if(glSmoke)std::cerr<<"GL_PROBE_GUI_READY\n";const juce::File output(glSmoke?juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("duck-gl-smoke"):juce::File(argc>1?argv[1]:"screenshots"));if(!glSmoke)output.createDirectory();
  DuckPocketAudioProcessor p;p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
  if(glSmoke)std::cerr<<"GL_PROBE_PROCESSOR_READY\n";
@@ -92,11 +108,11 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    e->removeFromDesktop();e.reset();
   }
   std::cout<<"PASS 100 native Windows editor peers with OpenGL disabled, total_ms="<<juce::Time::getMillisecondCounterHiRes()-start<<'\n';
-  // Reproduce three simultaneously open editors under live audio, including
+  // Reproduce four simultaneously open editors under live audio, including
   // HiDPI snapshots. Timing is diagnostic, not a hardware-dependent pass limit.
-  std::array<std::unique_ptr<DuckPocketAudioProcessor>,3> processors;
-  std::array<std::unique_ptr<DuckPocketAudioProcessorEditor>,3> editors;
-  for(int i=0;i<3;++i){
+  std::array<std::unique_ptr<DuckPocketAudioProcessor>,4> processors;
+  std::array<std::unique_ptr<DuckPocketAudioProcessorEditor>,4> editors;
+  for(int i=0;i<4;++i){
    processors[size_t(i)]=std::make_unique<DuckPocketAudioProcessor>();
    processors[size_t(i)]->setRateAndBufferSizeDetails(48000,800);processors[size_t(i)]->prepareToPlay(48000,800);
    editors[size_t(i)].reset(static_cast<DuckPocketAudioProcessorEditor*>(processors[size_t(i)]->createEditor()));
@@ -108,13 +124,38 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    double captureMs=0.;
    for(int frame=0;frame<120;++frame){
     for(int n=0;n<800;++n){const double t=double(frame*800+n)/48000.;const float out=float(.4*std::sin(t*6.2831853*83));const float key=float(.9*std::exp(-std::fmod(t,.25)/.045)*std::sin(t*6.2831853*110));samples.setSample(0,n,out);samples.setSample(1,n,out);samples.setSample(2,n,key);samples.setSample(3,n,key);}
-    for(int i=0;i<3;++i){juce::AudioBuffer<float> input(samples);processors[size_t(i)]->processBlock(input,midi);DuckUiTestAccess::tick(*editors[size_t(i)]);}
+    for(int i=0;i<4;++i){juce::AudioBuffer<float> input(samples);processors[size_t(i)]->processBlock(input,midi);DuckUiTestAccess::tick(*editors[size_t(i)]);}
     const double stamp=juce::Time::getMillisecondCounterHiRes();
     for(auto& editor:editors){const auto image=editor->createComponentSnapshot(editor->getLocalBounds(),true,float(dpi));check(image.isValid(),"three-editor playback snapshot");}
     captureMs+=juce::Time::getMillisecondCounterHiRes()-stamp;pump(1);
    }
    for(auto& editor:editors){check(DuckUiTestAccess::scopeHasSignal(*editor),"all three native scopes show live signal");check(DuckUiTestAccess::plots(*editor)==std::array<std::uint64_t,2>{0,0},"Windows live graphs never allocate or composite software bloom layers");check(DuckUiTestAccess::fellBack(*editor),"three Windows editors retain native rendering");}
-   std::cout<<"PASS Windows three-editor playback DPI="<<dpi<<" full_snapshot_batch_ms="<<captureMs/120.<<'\n';
+   std::cout<<"PASS Windows four-editor playback DPI="<<dpi<<" full_snapshot_batch_ms="<<captureMs/120.<<'\n';
+  }
+  const auto engines=editors[0]->getPeer()->getAvailableRenderingEngines();
+  for(const auto& name:engines){
+   // Switch ALL peers: changing only one leaves the other renderers active.
+   for(auto& editor:editors){DuckUiTestAccess::renderer(*editor,name);editor->createComponentSnapshot(editor->getLocalBounds());}
+   if(name.containsIgnoreCase("Direct2D")){
+    for(auto& editor:editors){const auto builds=DuckUiTestAccess::nativeCaches(*editor);for(int i=0;i<3;++i)editor->createComponentSnapshot(editor->getLocalBounds());check(DuckUiTestAccess::nativeCaches(*editor)==builds,"unchanged native chrome is converted once, not each paint");}
+   }
+   std::atomic<bool> running{true};
+   std::thread audio([&]{
+    juce::AudioBuffer<float> block(4,800);juce::MidiBuffer events;std::uint64_t sample=0;
+    auto deadline=std::chrono::steady_clock::now();
+    while(running.load()){
+     for(int n=0;n<800;++n,++sample){const double t=double(sample)/48000.;const float out=float(.4*std::sin(t*6.2831853*83)),key=float(.9*std::exp(-std::fmod(t,.25)/.045)*std::sin(t*6.2831853*110));block.setSample(0,n,out);block.setSample(1,n,out);block.setSample(2,n,key);block.setSample(3,n,key);}
+     for(auto& processor:processors){juce::AudioBuffer<float> input(block);processor->processBlock(input,events);}
+     deadline+=std::chrono::microseconds(16667);std::this_thread::sleep_until(deadline);
+    }
+   });
+   heartbeatLast=juce::Time::getMillisecondCounterHiRes();heartbeatMax=0;heartbeatCount=0;
+   const auto timer=SetTimer(nullptr,0,20,heartbeat);check(timer!=0,"native UI heartbeat timer created");
+   pump(2000);KillTimer(nullptr,timer);running.store(false);audio.join();
+   check(heartbeatCount>0,"four-editor playback services low-priority Windows messages");
+   std::cout<<"PASS Windows four-editor real-time renderer="<<name<<" heartbeat_count="<<heartbeatCount<<" max_message_gap_ms="<<heartbeatMax<<'\n';
+   // CI hardware varies; catch seconds-long starvation rather than enforce FPS.
+   check(heartbeatMax<1000.,"four-editor playback does not starve UI messages for a second");
   }
   for(auto& editor:editors){editor->removeFromDesktop();editor.reset();}
 #else

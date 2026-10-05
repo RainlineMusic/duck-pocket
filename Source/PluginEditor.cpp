@@ -502,7 +502,24 @@ void DuckPocketAudioProcessorEditor::paintChrome(juce::Graphics& g){
     // Use the cached image's actual pixel aspect, avoiding an extra fractional
     // Y scale on CoreGraphics when width*905/800 rounds to physical pixels.
     g.fillAll(look.tokens().chassis);
-    g.drawImage(chrome,{0,0,float(getWidth()),float(chrome.getHeight())*float(getWidth())/float(chrome.getWidth())},juce::RectanglePlacement::stretchToFit);
+    const juce::Image* background=&chrome;
+#if JUCE_WINDOWS
+    // JUCE 8.0.4 converts a SoftwareImageType on *every* D2D drawImage call.
+    // Keep the native image (and its device texture) for the whole chrome revision.
+    // Conversion happens after the software Graphics used to build chrome dies.
+    if(auto* peer=getPeer()){
+        const auto engines=peer->getAvailableRenderingEngines();
+        const int engine=peer->getCurrentRenderingEngine();
+        if(juce::isPositiveAndBelow(engine,engines.size())&&engines[engine].containsIgnoreCase("Direct2D")){
+            if(!nativeChrome.isValid()||nativeChromeRevision!=chromeBuildCount){
+                nativeChrome=juce::NativeImageType().convert(chrome);
+                nativeChromeRevision=chromeBuildCount;++nativeChromeBuildCount;
+            }
+            if(nativeChrome.isValid())background=&nativeChrome;
+        }
+    }
+#endif
+    g.drawImage(*background,{0,0,float(getWidth()),float(chrome.getHeight())*float(getWidth())/float(chrome.getWidth())},juce::RectanglePlacement::stretchToFit);
 }
 
 void DuckPocketAudioProcessorEditor::paintDynamicLabels(juce::Graphics& g){

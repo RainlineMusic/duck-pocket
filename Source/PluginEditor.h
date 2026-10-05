@@ -176,6 +176,10 @@ private:
     std::array<juce::ColourGradient,6> traceFades;
     void syncDurationMode();
     juce::Image blurredSnapshot,chrome;
+#if JUCE_WINDOWS
+    juce::Image nativeChrome;
+    std::uint64_t nativeChromeRevision=0,nativeChromeBuildCount=0;
+#endif
     bool chromeValid=false;
     double lastVisibleSignalTime=-1;
     float signalPeak=0,currentReduction=0;
