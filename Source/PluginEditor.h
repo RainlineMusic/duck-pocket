@@ -193,6 +193,9 @@ private:
     void saveSize();
     void setTheme(PocketTheme,bool persist=true);
     void showSettingsMenu();
+#if JUCE_WINDOWS
+    void setWindowsRenderer(const juce::String& name,bool persist);
+#endif
     void setHistoryWindow(double seconds);
     void captureBlurSnapshot();
     void setFrozen(bool frozen);
