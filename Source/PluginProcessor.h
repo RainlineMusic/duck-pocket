@@ -5,6 +5,7 @@
 struct PocketTrace {
     float keyLo=0, keyHi=0, outLo=0, outHi=0, gain=1;
     double time=0;
+    std::uint32_t generation=0;
 };
 
 class DuckPocketAudioProcessor final : public juce::AudioProcessor {
@@ -12,13 +13,16 @@ public:
     DuckPocketAudioProcessor();
     bool popTrace(PocketTrace&);
 
-    std::atomic<bool> displayBypass{false}, editorOpen{false}, editorExpanded{false};
+    std::atomic<bool> displayBypass{false}, editorOpen{false};
     std::atomic<int> editorWidth{0};
+    std::atomic<std::uint32_t> traceGeneration{0};
 
     void prepareToPlay(double, int) override;
     void releaseResources() override {}
     void reset() override;
     bool isBusesLayoutSupported(const BusesLayout&) const override;
+    using juce::AudioProcessor::processBlock;
+    using juce::AudioProcessor::processBlockBypassed;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed(juce::AudioBuffer<float>& b, juce::MidiBuffer& m) override { processAudio(b,m,true); }
     juce::AudioProcessorEditor* createEditor() override;
@@ -42,7 +46,7 @@ public:
 
 private:
     pocket::Engine engine;
-    std::atomic<float>* amount=nullptr,*duration=nullptr,*low=nullptr,*high=nullptr,*bypass=nullptr,*balance=nullptr,*processLow=nullptr,*processHigh=nullptr,*outputGain=nullptr;
+    std::atomic<float>* amount=nullptr,*duration=nullptr,*low=nullptr,*high=nullptr,*bypass=nullptr,*balance=nullptr,*processLow=nullptr,*processHigh=nullptr,*outputGain=nullptr,*durationPercent=nullptr,*relativeDuration=nullptr,*mix=nullptr,*attack=nullptr,*legacyAttack=nullptr;
     void processAudio(juce::AudioBuffer<float>&,juce::MidiBuffer&,bool);
 
     // 2400 trace packets/s gives 240 samples in the shortest (100 ms) graph.

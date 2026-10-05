@@ -1,0 +1,37 @@
+name: Duck Pocket macOS sanitizers
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, Release-1.0]
+permissions:
+  contents: read
+concurrency:
+  group: duck-pocket-sanitizers-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  instrumented:
+    runs-on: macos-14
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, thread]
+    env:
+      ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      TSAN_OPTIONS: halt_on_error=1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pinned JUCE
+        run: |
+          curl -fL https://github.com/juce-framework/JUCE/archive/refs/tags/8.0.4.zip -o juce.zip
+          unzip -q juce.zip
+          mv JUCE-8.0.4 JUCE
+      - name: Configure instrumented software renderer
+        run: cmake -S . -B instrumented -DCMAKE_BUILD_TYPE=Debug -DJUCE_DIR="$PWD/JUCE" -DDUCK_ENABLE_OPENGL=OFF -DDUCK_BUILD_UI_TESTS=ON -DDUCK_SANITIZER=${{ matrix.sanitizer }}
+      - name: Build regression and UI tests
+        run: cmake --build instrumented --parallel 3 --target PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null Pocket_mix_attack PocketProcessorTest PocketUITest
+      - name: Run instrumented regression suite
+        run: ctest --test-dir instrumented --output-on-failure
+      - name: Exercise software rendering
+        run: instrumented/PocketUITest_artefacts/Debug/PocketUITest "$PWD/instrumented-captures"
