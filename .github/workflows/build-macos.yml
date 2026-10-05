@@ -3,7 +3,7 @@ name: Build Duck Pocket macOS and Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, Release-1.0, feature/v1.0.0-duck-pocket]
+    branches: [main, Release-1.0, feature/v1.0.0-duck-pocket, feature/duck-ui-percent-duration]
   pull_request:
     branches: [main, Release-1.0]
 
