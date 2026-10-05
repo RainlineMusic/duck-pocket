@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "BinaryData.h"
 
 DuckPocketAudioProcessor::DuckPocketAudioProcessor()
     : AudioProcessor(BusesProperties()
@@ -22,14 +23,14 @@ DuckPocketAudioProcessor::DuckPocketAudioProcessor()
     mix=parameters.getRawParameterValue("mix");attack=parameters.getRawParameterValue("attack");legacyAttack=parameters.getRawParameterValue("legacyAttack");
     lookaheadChoice=parameters.getRawParameterValue("lookahead");attackMs=parameters.getRawParameterValue("attackMs");extendedAttack=parameters.getRawParameterValue("extendedAttack");
     parameters.addParameterListener("lookahead",this);
-    setLatencySamples(engine.latency());
+    setLatencySamples(pocket::Engine::latencyForRate(preparedRate.load(),float(getLookaheadMs())));
 }
 
 DuckPocketAudioProcessor::~DuckPocketAudioProcessor(){parameters.removeParameterListener("lookahead",this);cancelPendingUpdate();}
 int DuckPocketAudioProcessor::getLookaheadMs() const noexcept {
-    constexpr int values[]{1,5,10,20,50};
+    constexpr int values[]{1,5,10,25};
     const float index=lookaheadChoice->load();
-    return values[std::isfinite(index)?juce::jlimit(0,4,juce::roundToInt(index)):1];
+    return values[std::isfinite(index)?juce::jlimit(0,3,juce::roundToInt(index)):2];
 }
 void DuckPocketAudioProcessor::handleAsyncUpdate(){
     setLatencySamples(pocket::Engine::latencyForRate(preparedRate.load(),float(getLookaheadMs())));
@@ -44,7 +45,7 @@ void DuckPocketAudioProcessor::selectLookahead(int index){
     // Old automation keeps its original 0..5 ms mapping until explicitly opting
     // into a longer horizon. Never reinterpret the existing parameter ID.
     if(index>1&&!usesExtendedAttack()){set("attackMs",attack->load());set("extendedAttack",1.f);}
-    constexpr int values[]{1,5,10,20,50};index=juce::jlimit(0,4,index);
+    constexpr int values[]{1,5,10,25};index=juce::jlimit(0,3,index);
     if(values[index]!=getLookaheadMs())set("legacyAttack",0.f);
     auto& a=attackParameter();const float current=a.convertFrom0to1(a.getValue());
     if(current>values[index]){a.beginChangeGesture();a.setValueNotifyingHost(a.convertTo0to1(float(values[index])));a.endChangeGesture();}
@@ -82,15 +83,58 @@ juce::AudioProcessorValueTreeState::ParameterLayout DuckPocketAudioProcessor::la
     p.push_back(std::make_unique<juce::AudioParameterFloat>("mix","Mix",juce::NormalisableRange<float>(0.f,100.f,1.f),100.f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("attack","Attack (legacy 5 ms)",juce::NormalisableRange<float>(0.f,5.f,.1f),0.f));
     p.push_back(std::make_unique<juce::AudioParameterBool>("legacyAttack","Legacy Attack",false,juce::AudioParameterBoolAttributes().withAutomatable(false)));
-    p.push_back(std::make_unique<juce::AudioParameterChoice>("lookahead","Lookahead",juce::StringArray{"1 ms (low latency)","5 ms","10 ms","20 ms","50 ms"},1,juce::AudioParameterChoiceAttributes().withAutomatable(false)));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("attackMs","Attack",juce::NormalisableRange<float>(0.f,50.f,.1f),0.f));
+    p.push_back(std::make_unique<juce::AudioParameterChoice>("lookahead","Lookahead",juce::StringArray{"1 ms (low latency)","5 ms","10 ms","25 ms"},2,juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("attackMs","Attack",juce::NormalisableRange<float>(0.f,50.f,.1f),5.f));
     p.push_back(std::make_unique<juce::AudioParameterBool>("extendedAttack","Extended Attack",true,juce::AudioParameterBoolAttributes().withAutomatable(false)));
     return {p.begin(),p.end()};
+}
+
+// The six common host rates are converted offline. Decoding/allocation occurs
+// only at prepareToPlay, never on a click or inside processBlock.
+void DuckPocketAudioProcessor::prepareDuck(double sampleRate)
+{
+    struct Asset { double rate; const char* data; int size; };
+    const Asset assets[]{
+        {44100.,BinaryData::Duck44100_wav,BinaryData::Duck44100_wavSize},
+        {48000.,BinaryData::Duck48000_wav,BinaryData::Duck48000_wavSize},
+        {88200.,BinaryData::Duck88200_wav,BinaryData::Duck88200_wavSize},
+        {96000.,BinaryData::Duck96000_wav,BinaryData::Duck96000_wavSize},
+        {176400.,BinaryData::Duck176400_wav,BinaryData::Duck176400_wavSize},
+        {192000.,BinaryData::Duck192000_wav,BinaryData::Duck192000_wavSize},
+    };
+    const Asset* chosen=&assets[0];
+    for(const auto& asset:assets)if(std::abs(asset.rate-sampleRate)<std::abs(chosen->rate-sampleRate))chosen=&asset;
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::AudioFormatReader> reader(format.createReaderFor(new juce::MemoryInputStream(chosen->data,size_t(chosen->size),false),true));
+    duckAudio.setSize(1,0);
+    if(reader){
+        juce::AudioBuffer<float> source(1,int(reader->lengthInSamples));
+        if(reader->read(&source,0,source.getNumSamples(),0,true,false)){
+            if(sampleRate==chosen->rate)duckAudio=std::move(source);
+            else {
+                // Unusual rates: inexpensive linear conversion once at preparation.
+                const int count=juce::jmax(1,juce::roundToInt(source.getNumSamples()*sampleRate/chosen->rate));
+                duckAudio.setSize(1,count);
+                const auto* input=source.getReadPointer(0);auto* output=duckAudio.getWritePointer(0);
+                for(int i=0;i<count;++i){const double position=i*chosen->rate/sampleRate;const int a=juce::jmin(source.getNumSamples()-1,int(position)),b=juce::jmin(a+1,source.getNumSamples()-1);output[i]=input[a]+float(position-a)*(input[b]-input[a]);}
+            }
+        }
+    }
+    duckPosition=duckAudio.getNumSamples();duckRequested.store(false,std::memory_order_release);
+}
+void DuckPocketAudioProcessor::mixDuck(juce::AudioBuffer<float>& output)
+{
+    if(duckRequested.exchange(false,std::memory_order_acq_rel))duckPosition=0;
+    const int count=juce::jmin(output.getNumSamples(),duckAudio.getNumSamples()-duckPosition);
+    if(count<=0)return;
+    for(int channel=0;channel<output.getNumChannels();++channel)output.addFrom(channel,0,duckAudio,0,duckPosition,count);
+    duckPosition+=count;
 }
 
 void DuckPocketAudioProcessor::prepareToPlay(double sr,int)
 {
     preparedRate.store(pocket::Engine::validatedSampleRate(sr));
+    prepareDuck(preparedRate.load());
     engine.reset(sr,amount->load()*.01f,float(getLookaheadMs()));
     setLatencySamples(engine.latency());
     decimation=juce::jmax(1,int(pocket::Engine::validatedSampleRate(sr)/2400.0));
@@ -102,6 +146,7 @@ void DuckPocketAudioProcessor::prepareToPlay(double sr,int)
 
 void DuckPocketAudioProcessor::reset()
 {
+    duckRequested.store(false,std::memory_order_release);duckPosition=duckAudio.getNumSamples();
     engine.reset(getSampleRate(),amount->load()*.01f,float(getLookaheadMs()));
     setLatencySamples(engine.latency());
     captured=0;
@@ -169,6 +214,7 @@ void DuckPocketAudioProcessor::processAudio(juce::AudioBuffer<float>& b,juce::Mi
             captured=0;
         }
     }
+    mixDuck(main);
 }
 
 bool DuckPocketAudioProcessor::popTrace(PocketTrace& v)
@@ -182,7 +228,7 @@ void DuckPocketAudioProcessor::getStateInformation(juce::MemoryBlock& d)
     auto state=parameters.copyState();
     state.setProperty("uiWidth",editorWidth.load(),nullptr);
     state.removeProperty("uiExpanded",nullptr);
-    state.setProperty("schemaVersion",4,nullptr);
+    state.setProperty("schemaVersion",5,nullptr);
     if(auto x=state.createXml())copyXmlToBinary(*x,d);
 }
 
@@ -203,6 +249,10 @@ void DuckPocketAudioProcessor::setStateInformation(const void* d,int n)
         const bool legacy=schema<2;
         const bool preserveAttack=schema<3&&!state.getChildWithProperty("id","attack").isValid();
         const bool oldAttack=!state.getChildWithProperty("id","attackMs").isValid();
+        const bool missingLookahead=!state.getChildWithProperty("id","lookahead").isValid();
+        // Version 4 used indices 3/4 for 20/50 ms; both migrate to 25 ms.
+        // Migrate before range validation, and retain 5 ms for pre-choice projects.
+        if(schema<5&&!missingLookahead){auto choice=state.getChildWithProperty("id","lookahead");if(float(choice.getProperty("value"))>=3.f)choice.setProperty("value",3.f,nullptr);}
         state.removeProperty("uiExpanded",nullptr);
         for(auto* parameter:getParameters()){
             auto* ranged=dynamic_cast<juce::RangedAudioParameter*>(parameter);
@@ -215,10 +265,15 @@ void DuckPocketAudioProcessor::setStateInformation(const void* d,int n)
             const float value=float(node.getProperty("value"));
             node.setProperty("value",std::isfinite(value)?ranged->getNormalisableRange().snapToLegalValue(juce::jlimit(ranged->getNormalisableRange().start,ranged->getNormalisableRange().end,value)):ranged->convertFrom0to1(ranged->getDefaultValue()),nullptr);
         }
+        if(missingLookahead)state.getChildWithProperty("id","lookahead").setProperty("value",1.f,nullptr);
         if(preserveAttack)state.getChildWithProperty("id","legacyAttack").setProperty("value",1.f,nullptr);
         if(oldAttack){state.getChildWithProperty("id","extendedAttack").setProperty("value",0.f,nullptr);state.getChildWithProperty("id","attackMs").setProperty("value",state.getChildWithProperty("id","attack").getProperty("value"),nullptr);}
         if(legacy)state.getChildWithProperty("id","relativeDuration").setProperty("value",0.f,nullptr);
-        state.setProperty("schemaVersion",4,nullptr);
+        state.setProperty("schemaVersion",5,nullptr);
+        const int horizons[]{1,5,10,25};
+        const int horizon=horizons[juce::jlimit(0,3,int(state.getChildWithProperty("id","lookahead").getProperty("value")))];
+        auto activeAttack=state.getChildWithProperty("id",float(state.getChildWithProperty("id","extendedAttack").getProperty("value"))>.5f?"attackMs":"attack");
+        activeAttack.setProperty("value",juce::jmin(float(horizon),float(activeAttack.getProperty("value"))),nullptr);
         parameters.replaceState(state);
     }
 }

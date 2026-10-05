@@ -122,6 +122,7 @@ public:
     void paintOverChildren(juce::Graphics&) override;
     void resized() override;
     void parentHierarchyChanged() override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
 
 private:
     friend struct DuckUiTestAccess;

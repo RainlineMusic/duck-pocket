@@ -16,6 +16,7 @@ public:
     ~DuckPocketAudioProcessor() override;
     int getLookaheadMs() const noexcept;
     void selectLookahead(int index);
+    void playDuck() noexcept { duckRequested.store(true,std::memory_order_release); }
     bool usesExtendedAttack() const noexcept {return extendedAttack->load()>.5f;}
     juce::RangedAudioParameter& attackParameter(){return *parameters.getParameter(usesExtendedAttack()?"attackMs":"attack");}
     bool popTrace(PocketTrace&);
@@ -52,6 +53,11 @@ public:
     juce::AudioProcessorValueTreeState parameters;
 
 private:
+    void prepareDuck(double sampleRate);
+    void mixDuck(juce::AudioBuffer<float>&);
+    juce::AudioBuffer<float> duckAudio;
+    std::atomic<bool> duckRequested{false};
+    int duckPosition=0;
     pocket::Engine engine;
     std::atomic<float>* lookaheadChoice=nullptr,*attackMs=nullptr,*extendedAttack=nullptr;
     std::atomic<double> preparedRate{48000.};

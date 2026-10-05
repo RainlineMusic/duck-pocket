@@ -224,8 +224,8 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  HeaderValue outputField(dialLook,true);outputField.setRange(-12,6,.01);outputField.setValue(-.000003,juce::dontSendNotification);check(outputField.displayedValue()=="0.0 dB","header Output zero has no minus");outputField.setValue(-.1,juce::dontSendNotification);check(outputField.displayedValue()=="-0.1 dB","header Output uses one decimal");
  p.selectLookahead(1);DuckUiTestAccess::tick(*e);DuckUiTestAccess::attack(*e).setValue(5,juce::sendNotificationSync);
  p.selectLookahead(3);DuckUiTestAccess::tick(*e);
- check(DuckUiTestAccess::attack(*e).getValue()==5&&DuckUiTestAccess::attack(*e).getMaximum()==20,"Lookahead expands Attack range without changing ms");
- check(std::abs(DuckUiTestAccess::attack(*e).valueToProportionOfLength(5)-.25)<.0001,"5 of 20 ms occupies 25 percent of dial");
+ check(DuckUiTestAccess::attack(*e).getValue()==5&&DuckUiTestAccess::attack(*e).getMaximum()==25,"Lookahead expands Attack range without changing ms");
+ check(std::abs(DuckUiTestAccess::attack(*e).valueToProportionOfLength(5)-.20)<.0001,"5 of 25 ms occupies 20 percent of dial");
  p.selectLookahead(0);DuckUiTestAccess::tick(*e);check(DuckUiTestAccess::attack(*e).getValue()==1&&DuckUiTestAccess::attack(*e).getMaximum()==1,"low-latency Attack range and value clamp together");
  p.selectLookahead(1);DuckUiTestAccess::tick(*e);DuckUiTestAccess::attack(*e).setValue(0,juce::sendNotificationSync);
  ModernDial attackDial(dialLook,"Attack","ms","ms",0,false,false,true);attackDial.setRange(0,5,.1);attackDial.setValue(.1,juce::dontSendNotification);check(attackDial.displayedValue()=="0.1","Attack value and ms unit use separate lines");
