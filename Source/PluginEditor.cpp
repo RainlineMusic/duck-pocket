@@ -241,10 +241,25 @@ void DuckPocketAudioProcessorEditor::setFrozen(bool frozen){
     repaint(gainArea);repaint(scopeArea);
 }
 void DuckPocketAudioProcessorEditor::showSettingsMenu(){juce::PopupMenu root,window,theme;for(size_t i=0;i<windows.size();++i)window.addItem(int(i)+1,timeLabel(windows[i]),true,std::abs(gainWindow-windows[i])<1e-6);theme.addItem(201,"Neon",true,look.theme==PocketTheme::Neon);theme.addItem(204,"Amber",true,look.theme==PocketTheme::Amber);theme.addItem(202,"Solid Dark",true,look.theme==PocketTheme::SolidDark);root.addSubMenu("Graph window",window);root.addSeparator();root.addSubMenu("Theme",theme);
+#if JUCE_WINDOWS
+juce::StringArray rendererNames;
+if(auto* peer=getPeer()){
+    rendererNames=peer->getAvailableRenderingEngines();
+    juce::PopupMenu renderers;
+    for(int i=0;i<rendererNames.size();++i)
+        renderers.addItem(500+i,rendererNames[i],true,i==peer->getCurrentRenderingEngine());
+    root.addSeparator();root.addSubMenu("Windows renderer",renderers);
+}
+#else
+juce::StringArray rendererNames;
+#endif
 #if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
 root.addSeparator();root.addItem(401,"OpenGL (experimental)",true,glowRenderer!=nullptr);
 #endif
-root.addSeparator();root.addItem(301,"Percentage Duration",true,durationIsRelative);auto safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this);root.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(settingsButton),[safe](int id){if(!safe||id==0)return;
+root.addSeparator();root.addItem(301,"Percentage Duration",true,durationIsRelative);auto safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this);root.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(settingsButton),[safe,rendererNames](int id){if(!safe||id==0)return;
+#if JUCE_WINDOWS
+if(id>=500&&id<500+rendererNames.size()){safe->setWindowsRenderer(rendererNames[id-500],true);return;}
+#endif
 #if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
 if(id==401){safe->setOpenGL(safe->glowRenderer==nullptr);return;}
 #endif
@@ -556,10 +571,38 @@ void DuckPocketAudioProcessorEditor::paintOverChildren(juce::Graphics& g){
     text(g,"BYPASSED",centre,size,ink,juce::Justification::centred,look.isDark()?.1f:0.f);
 }
 void DuckPocketAudioProcessorEditor::parentHierarchyChanged(){
+#if JUCE_WINDOWS
+    if(preferences&&preferences->containsKey("duckPocket.ui.windowsRenderer.v1")){
+        const auto name=preferences->getValue("duckPocket.ui.windowsRenderer.v1");
+        juce::MessageManager::callAsync([safe=juce::Component::SafePointer<DuckPocketAudioProcessorEditor>(this),name]{
+            if(safe)safe->setWindowsRenderer(name,false);
+        });
+    }
+#endif
 #if DUCK_ENABLE_OPENGL && ! JUCE_WINDOWS
     if(getPeer()&&preferences&&preferences->getBoolValue("duckPocket.ui.opengl.v3",false)&&!glowRenderer)setOpenGL(true,false);
 #endif
 }
+#if JUCE_WINDOWS
+void DuckPocketAudioProcessorEditor::setWindowsRenderer(const juce::String& name,bool persist){
+    auto* peer=getPeer();if(peer==nullptr)return;
+    const auto names=peer->getAvailableRenderingEngines();
+    const int index=names.indexOf(name);
+    if(index<0)return; // Preserve JUCE's default when a stored backend is unavailable.
+    if(peer->getCurrentRenderingEngine()!=index){
+        peer->setCurrentRenderingEngine(index);
+        blurredSnapshot={};invalidateChrome();
+        for(auto* child:getChildren())child->repaint();
+    }
+    if(persist&&preferences){
+        const int actual=peer->getCurrentRenderingEngine();
+        if(juce::isPositiveAndBelow(actual,names.size())){
+            preferences->setValue("duckPocket.ui.windowsRenderer.v1",names[actual]);
+            preferences->saveIfNeeded();
+        }
+    }
+}
+#endif
 #if DUCK_ENABLE_OPENGL
 void DuckPocketAudioProcessorEditor::setOpenGL(bool enabled,bool persist){
 #if JUCE_WINDOWS
