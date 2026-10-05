@@ -3,6 +3,7 @@
 #include <cstdlib>
 struct DuckUiTestAccess {
  static void theme(DuckPocketAudioProcessorEditor& e,PocketTheme t){e.setTheme(t,false);}
+ static void glow(DuckPocketAudioProcessorEditor& e,bool enabled){e.setGraphGlow(enabled,false);}
  static HeaderValue& header(DuckPocketAudioProcessorEditor& e,bool output){return output?e.outputGain:e.mix;}
  static ModernDial& attack(DuckPocketAudioProcessorEditor& e){return e.attack;}
  static ModernDial& balance(DuckPocketAudioProcessorEditor& e){return e.midSide;}
@@ -56,6 +57,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  DuckPocketAudioProcessor p;p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
  if(glSmoke)std::cerr<<"GL_PROBE_PROCESSOR_READY\n";
  std::unique_ptr<DuckPocketAudioProcessorEditor> e(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));const bool native=argc>2&&juce::String(argv[2])=="--native";if(native){e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);}if(!glSmoke)check(!DuckUiTestAccess::rangesVisible(*e),"fresh filter panel defaults closed");DuckUiTestAccess::collapse(*e,true);e->setSize(800,905);DuckUiTestAccess::settle(*e);
+ DuckUiTestAccess::glow(*e,true);
  if(glSmoke)std::cerr<<"GL_PROBE_EDITOR_READY\n";
  if(glSmoke){
 #if DUCK_ENABLE_OPENGL
@@ -80,6 +82,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
    processors[size_t(i)]->setRateAndBufferSizeDetails(48000,800);processors[size_t(i)]->prepareToPlay(48000,800);
    editors[size_t(i)].reset(static_cast<DuckPocketAudioProcessorEditor*>(processors[size_t(i)]->createEditor()));
    editors[size_t(i)]->setSize(615,609);DuckUiTestAccess::settle(*editors[size_t(i)]);
+   DuckUiTestAccess::glow(*editors[size_t(i)],true);
    editors[size_t(i)]->addToDesktop(juce::ComponentPeer::windowIsTemporary);editors[size_t(i)]->setVisible(true);
   }
   juce::AudioBuffer<float> samples(4,800);juce::MidiBuffer midi;
@@ -206,6 +209,13 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  check(DuckUiTestAccess::plots(*e)==std::array<std::uint64_t,2>{0,0},"Windows playback bypasses all CPU bloom buffers");
 #endif
  const PocketTheme themes[]{PocketTheme::Neon,PocketTheme::SolidDark,PocketTheme::Amber};const char* names[]{"neon","dark","amber"};
+ const auto glowOn=e->createComponentSnapshot(e->getLocalBounds());
+ const auto chromeBeforeGlowToggle=DuckUiTestAccess::caches(*e);
+ DuckUiTestAccess::glow(*e,false);const auto glowOff=e->createComponentSnapshot(e->getLocalBounds());
+ check(DuckUiTestAccess::caches(*e)==chromeBeforeGlowToggle,"glow toggle reuses static materials and dial caches");
+ check(DuckUiTestAccess::scopeHasSignal(*e),"glow off retains the live waveform");
+ for(int top:{423,610}){bool different=false;for(int y=top;y<top+107&&!different;++y)for(int x=50;x<750;++x)if(glowOn.getPixelAt(x,y)!=glowOff.getPixelAt(x,y)){different=true;break;}check(different,"glow toggle affects each graph without new audio");}
+ DuckUiTestAccess::glow(*e,true);
  juce::MidiBuffer midi;juce::AudioBuffer<float> b(4,64);
  for(int ti=0;ti<3;++ti)for(int state=0;state<3;++state){p.reset();DuckUiTestAccess::tick(*e);DuckUiTestAccess::theme(*e,themes[ti]);
   for(int block=0;block<750;++block){for(int i=0;i<64;++i){const int n=block*64+i;const double time=double(n)/48000.,hit=std::fmod(time,.25);

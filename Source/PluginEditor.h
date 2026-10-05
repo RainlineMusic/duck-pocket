@@ -173,6 +173,7 @@ private:
     double gainWindow=1.,scopeWindow=1.;
     std::uint32_t traceGeneration=0;
     bool durationIsRelative=false;
+    bool graphGlow=true;
     void syncDurationMode();
     juce::Image blurredSnapshot,chrome;
     bool chromeValid=false;
@@ -191,6 +192,7 @@ private:
     void syncProcessingRange();
     void saveSize();
     void setTheme(PocketTheme,bool persist=true);
+    void setGraphGlow(bool enabled,bool persist=true);
     void showSettingsMenu();
     void setHistoryWindow(double seconds);
     void captureBlurSnapshot();
