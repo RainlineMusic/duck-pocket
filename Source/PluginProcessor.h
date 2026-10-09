@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "PocketDSP.h"
+#include "License.h"
 
 struct PocketTrace {
     float keyLo=0, keyHi=0, outLo=0, outHi=0, gain=1;
@@ -20,6 +21,9 @@ public:
     bool usesExtendedAttack() const noexcept {return extendedAttack->load()>.5f;}
     juce::RangedAudioParameter& attackParameter(){return *parameters.getParameter(usesExtendedAttack()?"attackMs":"attack");}
     bool popTrace(PocketTrace&);
+    bool isActivated() const noexcept {return license->active.load(std::memory_order_acquire);}
+    bool activateLicense(const juce::String& key,juce::String& error){return license->activate(key,error);}
+    std::atomic<bool> listenSidechain{false};
 
     std::atomic<bool> displayBypass{false}, editorOpen{false};
     std::atomic<int> editorWidth{0};
@@ -53,6 +57,9 @@ public:
     juce::AudioProcessorValueTreeState parameters;
 
 private:
+    friend struct DuckLicenseTestAccess;
+    juce::SharedResourcePointer<pocket::LicenseState> license;
+    float monitorMix=0.f;
     void prepareDuck(double sampleRate);
     void mixDuck(juce::AudioBuffer<float>&);
     juce::AudioBuffer<float> duckAudio;
@@ -76,3 +83,4 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DuckPocketAudioProcessor)
 };
+

@@ -93,3 +93,24 @@ Standalone tests cover the four menu horizons plus legacy 20/50 ms engine horizo
 New instances use 10 ms Lookahead and 5 ms Attack. Lookahead offers 1 / 5 / 10 / 25 ms; old 20/50 ms selections migrate to 25 ms. Pre-Lookahead sessions retain 5 ms and legacy Attack automation. Double-click Attack resets to 5 ms, bounded by the selected Lookahead. Button hover hints are disabled.
 
 Double-click the duck logo to play the embedded quack through the plug-in output. Six mono 16-bit WAVs are converted offline for 44.1 / 48 / 88.2 / 96 / 176.4 / 192 kHz. Only the selected file is decoded during prepareToPlay; other rates use a one-time linear conversion. Playback uses a preallocated buffer and an atomic trigger, without file access or resampling on the audio thread. Repeat clicks restart the sound instead of stacking voices. No normalization or amplification is applied. This uses the host's audio engine: a host that suspends plug-in processing while stopped must resume processing for the sound to play.
+
+
+
+## Version 1.0.1: activation and sidechain audition
+
+Offline signed licenses activate all instances and formats for the current OS
+user. Without activation audio remains dry and latency-aligned; sessions cannot
+activate the plugin. See [LICENSE-SYSTEM.md](LICENSE-SYSTEM.md) for the precise
+signing protocol and server-side Python/PHP generators. The private signing PEM
+is delivered separately to the owner and must never enter this repository.
+
+The headphones button beside Sidechain Filter auditions the detector's actual
+post-filter signal with a 5 ms crossfade. Closing the editor or collapsing the
+filter panel switches audition off. All hover hints are removed.
+
+Actions build macOS universal VST3/AAX/AU/CLAP and Windows x64 VST3/AAX/CLAP.
+AU is macOS-only. CLAP uses the MIT clap-juce-extensions adapter pinned by commit.
+No EXE/PKG installer is built: download archives, apply your production signatures
+(AAX requires PACE), then build installers locally. Existing optional Apple
+signing settings remain available; unsigned/ad-hoc outputs are not guaranteed
+to pass Gatekeeper/SmartScreen.

@@ -3,7 +3,7 @@ name: Build Duck Pocket macOS and Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, Release-1.0, feature/v1.0.0-duck-pocket, feature/duck-ui-percent-duration]
+    branches: [main, Release-1.0, feature/v1.0.0-duck-pocket, feature/duck-ui-percent-duration, feature/duck-license-sidechain]
   pull_request:
     branches: [main, Release-1.0]
 
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PLUGIN_VERSION: "1.0.0"
+  PLUGIN_VERSION: "1.0.1"
 
 jobs:
   macos:
@@ -45,8 +45,8 @@ jobs:
       - name: Configure universal build
         run: cmake -S . -B build -G Xcode -DJUCE_DIR="$PWD/JUCE" -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DDUCK_ENABLE_OPENGL=ON -DDUCK_BUILD_UI_TESTS=ON
 
-      - name: Build VST3 and AAX
-        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null Pocket_mix_attack Pocket_lookahead PocketProcessorTest PocketUITest
+      - name: Build VST3, AU, CLAP and AAX
+        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX DuckPocket_AU DuckPocket_CLAP PocketLicenseTest PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null Pocket_mix_attack Pocket_lookahead PocketProcessorTest PocketUITest
 
       - name: Run all regression tests
         run: ctest --test-dir build -C Release --output-on-failure
@@ -118,6 +118,30 @@ jobs:
           chmod +x pluginval.app/Contents/MacOS/pluginval
           pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --validate "$PWD/build/DuckPocket_artefacts/Release/VST3/Duck Pocket.vst3" 2>&1 | tee pluginval-macos.log
 
+      - name: Sign AU and CLAP
+        shell: bash
+        run: |
+          for bundle in "build/DuckPocket_artefacts/Release/AU/Duck Pocket.component" "build/DuckPocket_artefacts/Release/CLAP/Duck Pocket.clap"; do
+            if [[ "${{ steps.apple-signing.outputs.enabled }}" == "true" ]]; then
+              codesign --force --deep --options runtime --timestamp --sign "$MACOS_SIGNING_IDENTITY" "$bundle"
+            else
+              codesign --force --deep --sign - "$bundle"
+            fi
+            codesign --verify --deep --strict "$bundle"
+          done
+
+      - name: Archive macOS AU and CLAP
+        run: |
+          mkdir -p additional-formats
+          ditto -c -k --keepParent "build/DuckPocket_artefacts/Release/AU/Duck Pocket.component" "additional-formats/DuckPocket-${PLUGIN_VERSION}-macOS-AU.zip"
+          ditto -c -k --keepParent "build/DuckPocket_artefacts/Release/CLAP/Duck Pocket.clap" "additional-formats/DuckPocket-${PLUGIN_VERSION}-macOS-CLAP.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DuckPocket-macOS-AU-CLAP
+          path: additional-formats/*
+          if-no-files-found: error
+
       - name: Package macOS plug-ins
         run: |
           ditto -c -k --sequesterRsrc --keepParent "build/DuckPocket_artefacts/Release/VST3/Duck Pocket.vst3" "DuckPocket-v${PLUGIN_VERSION}-macOS-Universal-VST3.zip"
@@ -125,13 +149,13 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DuckPocket-v1.0.0-macOS-Universal-VST3
-          path: DuckPocket-v1.0.0-macOS-Universal-VST3.zip
+          name: DuckPocket-v1.0.1-macOS-Universal-VST3
+          path: DuckPocket-v1.0.1-macOS-Universal-VST3.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: DuckPocket-v1.0.0-macOS-Universal-AAX-Developer
-          path: DuckPocket-v1.0.0-macOS-Universal-AAX-Developer.zip
+          name: DuckPocket-v1.0.1-macOS-Universal-AAX-Developer
+          path: DuckPocket-v1.0.1-macOS-Universal-AAX-Developer.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
@@ -171,7 +195,7 @@ jobs:
         run: cmake -S . -B build -A x64 -DJUCE_DIR="${{ github.workspace }}/JUCE" -DDUCK_ENABLE_OPENGL=ON -DDUCK_BUILD_UI_TESTS=ON
 
       - name: Build VST3, AAX and DSP tests
-        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null Pocket_mix_attack Pocket_lookahead PocketProcessorTest PocketUITest
+        run: cmake --build build --config Release --target DuckPocket_VST3 DuckPocket_AAX DuckPocket_CLAP PocketLicenseTest PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null Pocket_mix_attack Pocket_lookahead PocketProcessorTest PocketUITest
 
       - name: Run all regression tests
         run: ctest --test-dir build -C Release --output-on-failure
@@ -197,6 +221,18 @@ jobs:
           & $validator --strictness-level 5 --validate "$PWD/build/DuckPocket_artefacts/Release/VST3/Duck Pocket.vst3" 2>&1 | Tee-Object -FilePath pluginval-windows.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Archive Windows CLAP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force additional-formats | Out-Null
+          Compress-Archive -Path "build/DuckPocket_artefacts/Release/CLAP/*" -DestinationPath "additional-formats/DuckPocket-${env:PLUGIN_VERSION}-Windows-CLAP.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DuckPocket-Windows-CLAP
+          path: additional-formats/*
+          if-no-files-found: error
+
       - name: Package Windows plug-ins
         shell: pwsh
         run: |
@@ -205,13 +241,13 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DuckPocket-v1.0.0-Windows-x64-VST3
-          path: DuckPocket-v1.0.0-Windows-x64-VST3.zip
+          name: DuckPocket-v1.0.1-Windows-x64-VST3
+          path: DuckPocket-v1.0.1-Windows-x64-VST3.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: DuckPocket-v1.0.0-Windows-x64-AAX-Developer
-          path: DuckPocket-v1.0.0-Windows-x64-AAX-Developer.zip
+          name: DuckPocket-v1.0.1-Windows-x64-AAX-Developer
+          path: DuckPocket-v1.0.1-Windows-x64-AAX-Developer.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
@@ -243,3 +279,4 @@ jobs:
           name: native-gl-log-windows
           path: native-gl-windows.log
           if-no-files-found: ignore
+

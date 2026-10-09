@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include <iostream>
+struct DuckLicenseTestAccess {static void activate(DuckPocketAudioProcessor& p){p.license->active.store(true);}};
 #include <cstdlib>
 #include <thread>
 #include <chrono>
@@ -79,7 +80,7 @@ static void CALLBACK heartbeat(HWND,UINT,UINT_PTR,DWORD){
 }
 #endif
 int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=="--gl-smoke";if(glSmoke)std::cerr<<"GL_PROBE_START\n";juce::ScopedJuceInitialiser_GUI init;if(glSmoke)std::cerr<<"GL_PROBE_GUI_READY\n";const juce::File output(glSmoke?juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("duck-gl-smoke"):juce::File(argc>1?argv[1]:"screenshots"));if(!glSmoke)output.createDirectory();
- DuckPocketAudioProcessor p;p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
+ DuckPocketAudioProcessor p;DuckLicenseTestAccess::activate(p);p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
  if(glSmoke)std::cerr<<"GL_PROBE_PROCESSOR_READY\n";
  std::unique_ptr<DuckPocketAudioProcessorEditor> e(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));const bool native=argc>2&&juce::String(argv[2])=="--native";if(native){e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);}if(!glSmoke)check(!DuckUiTestAccess::rangesVisible(*e),"fresh filter panel defaults closed");DuckUiTestAccess::collapse(*e,true);e->setSize(800,905);DuckUiTestAccess::settle(*e);
  if(glSmoke)std::cerr<<"GL_PROBE_EDITOR_READY\n";
@@ -317,3 +318,4 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  DuckUiTestAccess::collapse(*e,false);p.parameters.getParameter("bypass")->setValueNotifyingHost(1);DuckUiTestAccess::tick(*e);auto bypassImage=e->createComponentSnapshot(e->getLocalBounds(),true,2.f);auto bypassStream=output.getChildFile("bypass-615-2x.png").createOutputStream();check(bypassStream&&juce::PNGImageFormat().writeImageToStream(bypassImage,*bypassStream),"smooth bypass review capture");bypassStream.reset();p.parameters.getParameter("bypass")->setValueNotifyingHost(0);
  e.reset();std::cout<<"PASS real JUCE theme captures and chrome reuse\n";
 }
+

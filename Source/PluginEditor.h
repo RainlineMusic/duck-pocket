@@ -139,14 +139,19 @@ private:
     using SliderAttachment=juce::AudioProcessorValueTreeState::SliderAttachment;
     DuckPocketAudioProcessor& audioProcessor;
     PocketLook look;
-    juce::TooltipWindow tooltips{this,700};
+    struct ActivationPanel : juce::Component {
+        void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff171c25));}
+    } activationPanel;
+    juce::Label activationTitle,activationMessage;
+    juce::TextEditor licenseInput;
+    juce::TextButton activateButton{"OK"};
     ModernDial influence{look,"Influence","Depth","%",0xff5987ff};
     ModernDial duration{look,"Duration","Sidechain length","ms",0xff32d4cb,true,false,false,"AUTO"};
     ModernDial attack{look,"Attack","ms","ms",0,false,false,true};
     HeaderValue outputGain{look,true},mix{look,false};
     ResettableRangeSlider sidechainRange,processingRange;
     ModernDial midSide{look,"M/S Balance","","balance",0,false,false,true};
-    juce::TextButton settingsButton{"settings"},bypassButton{"power"},freezeButton{"freeze"},expandButton{"expand"};
+    juce::TextButton settingsButton{"settings"},bypassButton{"power"},freezeButton{"freeze"},expandButton{"expand"},listenButton{"listen"};
     std::unique_ptr<SliderAttachment> influenceAttach,durationAttach,outputAttach,msAttach,mixAttach;
     std::unique_ptr<juce::ParameterAttachment> attackAttach;
     bool attackUsesMs=false,updatingAttack=false,attackGesture=false;
@@ -216,3 +221,4 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DuckPocketAudioProcessorEditor)
 };
+

@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include <iostream>
+struct DuckLicenseTestAccess {static void activate(DuckPocketAudioProcessor& p){p.license->active.store(true);}};
 #include <cstdlib>
 #include <thread>
 static void check(bool b,const char* m){if(!b){std::cerr<<"FAIL "<<m<<'\n';std::abort();}}
@@ -10,7 +11,7 @@ struct LatencyListener:juce::AudioProcessorListener {
  void audioProcessorChanged(juce::AudioProcessor*,const ChangeDetails& details) override {if(details.latencyChanged)++changes;}
 };
 int main(){juce::ScopedJuceInitialiser_GUI init;
- auto processorStorage=std::make_unique<DuckPocketAudioProcessor>();auto& p=*processorStorage;auto fresh=std::make_unique<DuckPocketAudioProcessor>();juce::MidiBuffer midi;
+ auto processorStorage=std::make_unique<DuckPocketAudioProcessor>();auto& p=*processorStorage;DuckLicenseTestAccess::activate(p);auto fresh=std::make_unique<DuckPocketAudioProcessor>();juce::MidiBuffer midi;
  for(double invalid:{0.,std::numeric_limits<double>::quiet_NaN(),std::numeric_limits<double>::infinity()}){p.setRateAndBufferSizeDetails(invalid,64);p.prepareToPlay(invalid,64);check(p.getLatencySamples()==pocket::Engine::latencyForRate(invalid,10.f),"invalid host rate safe");}
 
  auto unsupported=p.getBusesLayout();unsupported.inputBuses.set(0,juce::AudioChannelSet::quadraphonic());unsupported.outputBuses.set(0,juce::AudioChannelSet::quadraphonic());check(!p.isBusesLayoutSupported(unsupported),"multichannel main bus rejected");
@@ -67,3 +68,4 @@ int main(){juce::ScopedJuceInitialiser_GUI init;
  for(int i=0;i<100;++i){std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());editor->setSize(800+i%2*700,633+i%2*555);}
  std::cout<<"PASS processor buses, variable blocks, latency, state migration, trace resets, concurrent trace exchange, 100 editor lifecycles\n";
 }
+

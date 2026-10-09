@@ -135,6 +135,7 @@ void DuckPocketAudioProcessor::prepareToPlay(double sr,int)
 {
     preparedRate.store(pocket::Engine::validatedSampleRate(sr));
     prepareDuck(preparedRate.load());
+    monitorMix=0.f;listenSidechain.store(false);
     engine.reset(sr,amount->load()*.01f,float(getLookaheadMs()));
     setLatencySamples(engine.latency());
     decimation=juce::jmax(1,int(pocket::Engine::validatedSampleRate(sr)/2400.0));
@@ -179,9 +180,12 @@ void DuckPocketAudioProcessor::processAudio(juce::AudioBuffer<float>& b,juce::Mi
 
     displayBypass.store(hostBypass,std::memory_order_relaxed);
     engine.setLookaheadMs(float(getLookaheadMs()));
+    const bool activated=isActivated();
+    const bool monitoring=activated&&!hostBypass&&bypass->load()<=.5f&&listenSidechain.load(std::memory_order_relaxed);
+    const float monitorStep=1.f/float(preparedRate.load()*.005);
     engine.configure(amount->load()*.01f,duration->load(),low->load(),high->load(),
-                     hostBypass||bypass->load()>.5f,balance->load(),
-                     processLow->load(),processHigh->load(),outputGain->load(),durationPercent->load(),relativeDuration->load()>.5f,mix->load(),usesExtendedAttack()?attackMs->load():attack->load(),legacyAttack->load()>.5f);
+                     !activated||hostBypass||bypass->load()>.5f,balance->load(),
+                     processLow->load(),processHigh->load(),activated?outputGain->load():0.f,durationPercent->load(),relativeDuration->load()>.5f,mix->load(),usesExtendedAttack()?attackMs->load():attack->load(),legacyAttack->load()>.5f);
 
     auto* mainL=main.getWritePointer(0);
     auto* mainR=mainChannels>1?main.getWritePointer(1):nullptr;
@@ -195,8 +199,11 @@ void DuckPocketAudioProcessor::processAudio(juce::AudioBuffer<float>& b,juce::Mi
         const float l=mainL[n],r=mainR?mainR[n]:l;
         const float kl=keyL?keyL[n]:0.f,kr=keyR?keyR[n]:kl;
         auto v=engine.process({l,r},{kl,kr});
-        mainL[n]=v.out[0];
-        if(mainR)mainR[n]=v.out[1];
+        if(!activated){v.out=v.dry;v.gain=1.f;monitorMix=0.f;}
+        monitorMix=juce::jlimit(0.f,1.f,monitorMix+(monitoring?monitorStep:-monitorStep));
+        const float monitorL=mainR?v.key[0]:.5f*(v.key[0]+v.key[1]);
+        mainL[n]=v.out[0]+monitorMix*(monitorL-v.out[0]);
+        if(mainR)mainR[n]=v.out[1]+monitorMix*(v.key[1]-v.out[1]);
         traceTime+=step;
 
         if(!show){captured=0;continue;}
@@ -214,7 +221,7 @@ void DuckPocketAudioProcessor::processAudio(juce::AudioBuffer<float>& b,juce::Mi
             captured=0;
         }
     }
-    mixDuck(main);
+    if(activated)mixDuck(main);
 }
 
 bool DuckPocketAudioProcessor::popTrace(PocketTrace& v)
@@ -280,3 +287,4 @@ void DuckPocketAudioProcessor::setStateInformation(const void* d,int n)
 
 juce::AudioProcessorEditor* DuckPocketAudioProcessor::createEditor(){return new DuckPocketAudioProcessorEditor(*this);}
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter(){return new DuckPocketAudioProcessor();}
+
