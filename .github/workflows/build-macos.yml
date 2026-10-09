@@ -131,6 +131,43 @@ jobs:
             codesign --verify --deep --strict "$bundle"
           done
 
+      - name: Notarize and staple AU and CLAP
+        if: steps.apple-signing.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$APPLE_ID" || -z "$APPLE_TEAM_ID" || -z "$APPLE_APP_PASSWORD" ]]; then
+            echo "::warning::AU and CLAP are signed but not notarized: missing Apple notarization secrets."
+            exit 0
+          fi
+          mkdir -p notary-logs
+          for format in AU CLAP; do
+            if [[ "$format" == "AU" ]]; then extension=component; else extension=clap; fi
+            bundle="build/DuckPocket_artefacts/Release/$format/Duck Pocket.$extension"
+            archive="$RUNNER_TEMP/duck-$format-notary.zip"
+            result="notary-logs/$format-submit.json"
+            ditto -c -k --keepParent "$bundle" "$archive"
+            xcrun notarytool submit "$archive" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$result"
+            if ! python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("Notarization status:",r.get("status")); sys.exit(0 if r.get("status") == "Accepted" else 1)' "$result"; then
+              submission_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "$result")
+              if [[ -n "$submission_id" ]]; then
+                xcrun notarytool log "$submission_id" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" "notary-logs/$format-log.json" || true
+              fi
+              echo "::error::$format notarization was not accepted."
+              exit 1
+            fi
+            xcrun stapler staple "$bundle"
+            xcrun stapler validate "$bundle"
+            codesign --verify --deep --strict "$bundle"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notarization-log-macos-AU-CLAP
+          path: notary-logs
+          if-no-files-found: ignore
+
       - name: Archive macOS AU and CLAP
         run: |
           mkdir -p additional-formats
