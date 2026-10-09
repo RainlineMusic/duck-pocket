@@ -19,6 +19,7 @@ int main(){
  for(int block=0;block<30;++block){for(int n=0;n<256;++n){audio.setSample(0,n,.2f);audio.setSample(1,n,.3f);audio.setSample(2,n,.9f);audio.setSample(3,n,.9f);}p->processBlock(audio,midi);}
  check(std::abs(audio.getSample(0,255)-.2f)<1e-5&&std::abs(audio.getSample(1,255)-.3f)<1e-5,"unlicensed latency-aligned dry output");
  DuckLicenseTestAccess::active(*p,true);p->listenSidechain.store(true);
+ p->prepareToPlay(48000,256);check(p->listenSidechain.load(),"transport preparation preserves audition toggle");
  p->parameters.getParameter("scLow")->setValueNotifyingHost(0);
  p->parameters.getParameter("scHigh")->setValueNotifyingHost(1);
  double heard=0;

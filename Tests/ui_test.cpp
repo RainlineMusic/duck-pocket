@@ -1,6 +1,6 @@
 #include "PluginEditor.h"
 #include <iostream>
-struct DuckLicenseTestAccess {static void activate(DuckPocketAudioProcessor& p){p.license->active.store(true);}};
+struct DuckLicenseTestAccess {static void activate(DuckPocketAudioProcessor& p,bool active=true){p.license->active.store(active);}};
 #include <cstdlib>
 #include <thread>
 #include <chrono>
@@ -12,6 +12,9 @@ struct DuckUiTestAccess {
  static void renderer(DuckPocketAudioProcessorEditor& e,const juce::String& name){e.setWindowsRenderer(name,false);}
  static std::uint64_t nativeCaches(DuckPocketAudioProcessorEditor& e){return e.nativeChromeBuildCount;}
 #endif
+ static bool activationShown(DuckPocketAudioProcessorEditor& e){return e.activationPanel.isVisible();}
+ static void invalidKey(DuckPocketAudioProcessorEditor& e){e.licenseInput.setText("invalid");e.activateButton.onClick();}
+ static void audition(DuckPocketAudioProcessorEditor& e){e.listenButton.onClick();}
  static void theme(DuckPocketAudioProcessorEditor& e,PocketTheme t){e.setTheme(t,false);}
  static juce::Image ageFade(DuckPocketAudioProcessorEditor& e,bool gain){
   e.gainWindow=e.scopeWindow=1.;e.gainFrozen=e.scopeFrozen=false;e.gainResume=e.scopeResume=0.;
@@ -83,6 +86,13 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  DuckPocketAudioProcessor p;DuckLicenseTestAccess::activate(p);p.setRateAndBufferSizeDetails(48000,64);p.prepareToPlay(48000,64);
  if(glSmoke)std::cerr<<"GL_PROBE_PROCESSOR_READY\n";
  std::unique_ptr<DuckPocketAudioProcessorEditor> e(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));const bool native=argc>2&&juce::String(argv[2])=="--native";if(native){e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);}if(!glSmoke)check(!DuckUiTestAccess::rangesVisible(*e),"fresh filter panel defaults closed");DuckUiTestAccess::collapse(*e,true);e->setSize(800,905);DuckUiTestAccess::settle(*e);
+ if(!glSmoke){
+  DuckLicenseTestAccess::activate(p,false);DuckUiTestAccess::tick(*e);check(DuckUiTestAccess::activationShown(*e),"activation overlay shown without license");
+  DuckUiTestAccess::invalidKey(*e);check(!p.isActivated()&&DuckUiTestAccess::activationShown(*e),"invalid key keeps overlay and audio locked");
+  auto image=e->createComponentSnapshot(e->getLocalBounds(),true,1.f);auto stream=output.getChildFile("activation.png").createOutputStream();check(stream&&juce::PNGImageFormat().writeImageToStream(image,*stream),"activation capture");
+  DuckLicenseTestAccess::activate(p);DuckUiTestAccess::tick(*e);check(!DuckUiTestAccess::activationShown(*e),"activation shared with open editor");
+  p.listenSidechain.store(true);DuckUiTestAccess::collapse(*e,false);check(!p.listenSidechain.load(),"collapse stops audition");DuckUiTestAccess::collapse(*e,true);
+ }
  if(glSmoke)std::cerr<<"GL_PROBE_EDITOR_READY\n";
  if(glSmoke){
 #if DUCK_ENABLE_OPENGL

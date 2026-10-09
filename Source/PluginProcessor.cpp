@@ -135,7 +135,7 @@ void DuckPocketAudioProcessor::prepareToPlay(double sr,int)
 {
     preparedRate.store(pocket::Engine::validatedSampleRate(sr));
     prepareDuck(preparedRate.load());
-    monitorMix=0.f;listenSidechain.store(false);
+    monitorMix=0.f;
     engine.reset(sr,amount->load()*.01f,float(getLookaheadMs()));
     setLatencySamples(engine.latency());
     decimation=juce::jmax(1,int(pocket::Engine::validatedSampleRate(sr)/2400.0));
