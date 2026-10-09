@@ -23,6 +23,11 @@ public:
     bool popTrace(PocketTrace&);
     bool isActivated() const noexcept {return license->active.load(std::memory_order_acquire);}
     bool activateLicense(const juce::String& key,juce::String& error){return license->activate(key,error);}
+    juce::String licenseDeviceCode() const {return license->deviceCode;}
+    bool importLicenseFile(const juce::File& file,juce::String& error){return license->importFile(file,error);}
+    bool startOnlineActivation(const juce::String& key,juce::String& error){return license->startOnline(key,error);}
+    bool onlineActivationBusy() const {return license->onlineBusy();}
+    juce::String onlineActivationMessage() const {return license->onlineMessage();}
     std::atomic<bool> listenSidechain{false};
 
     std::atomic<bool> displayBypass{false}, editorOpen{false};

@@ -1,0 +1,2 @@
+#pragma once
+#define DUCK_LICENSE_API_URL "@DUCK_LICENSE_API_URL@"

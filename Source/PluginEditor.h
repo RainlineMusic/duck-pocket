@@ -139,12 +139,25 @@ private:
     using SliderAttachment=juce::AudioProcessorValueTreeState::SliderAttachment;
     DuckPocketAudioProcessor& audioProcessor;
     PocketLook look;
-    struct ActivationPanel : juce::Component {
-        void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff171c25));}
+    struct ActivationPanel : juce::Component,juce::FileDragAndDropTarget {
+        bool offline=false,dragging=false;
+        std::function<void(const juce::File&)> onFile;
+        bool isInterestedInFileDrag(const juce::StringArray& files) override {return offline&&files.size()==1;}
+        void fileDragEnter(const juce::StringArray&,int,int) override {dragging=true;repaint();}
+        void fileDragExit(const juce::StringArray&) override {dragging=false;repaint();}
+        void filesDropped(const juce::StringArray& files,int,int) override {dragging=false;repaint();if(offline&&files.size()==1&&onFile)onFile(juce::File(files[0]));}
+        void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff171c25));if(dragging){g.setColour(juce::Colour(0xff8caff0));g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(8),6,2);}}
     } activationPanel;
     juce::Label activationTitle,activationMessage;
     juce::TextEditor licenseInput;
-    juce::TextButton activateButton{"OK"};
+    juce::TextButton activateButton{"OK"},onlineButton{"Online (Recommended)"},offlineButton{"Offline"},copyDeviceButton{"Copy code"},chooseLicenseButton{"Choose file…"};
+    juce::TextEditor deviceCodeInput;
+    juce::Label deviceCodeLabel;
+    std::unique_ptr<juce::FileChooser> licenseChooser;
+    bool offlineActivation=false;
+    juce::String lastOnlineMessage;
+    void setActivationMode(bool offline);
+    void importLicense(const juce::File&);
     ModernDial influence{look,"Influence","Depth","%",0xff5987ff};
     ModernDial duration{look,"Duration","Sidechain length","ms",0xff32d4cb,true,false,false,"AUTO"};
     ModernDial attack{look,"Attack","ms","ms",0,false,false,true};

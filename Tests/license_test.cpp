@@ -6,14 +6,27 @@ struct DuckLicenseTestAccess {static void active(DuckPocketAudioProcessor& p,boo
 static void check(bool b,const char* m){if(!b){std::cerr<<"FAIL "<<m<<'\n';std::abort();}}
 int main(){
  juce::ScopedJuceInitialiser_GUI init;
- check(pocket::verifyLicense(testLicense,testModulus),"standard RSA SHA256 signature accepted");
- check(!pocket::verifyLicense(testLicense),"test key cannot activate production");
+ check(pocket::verifyLicense(testLicense,testDevice,testModulus),"standard RSA SHA256 signature accepted");
+ check(!pocket::verifyLicense(testLicense,testDevice),"test key cannot activate production");
  auto altered=juce::String(testLicense).replaceSection(10,1,"f");
- check(!pocket::verifyLicense(altered,testModulus),"altered payload rejected");
- check(!pocket::verifyLicense(juce::String(testLicense).dropLastCharacters(1)+(juce::String(testLicense).endsWith("0")?"1":"0"),testModulus),"altered signature rejected");
- check(!pocket::verifyLicense("DP1.invalid")&&!pocket::verifyLicense(juce::String::repeatedString("a",8192)),"malformed keys rejected");
+ check(!pocket::verifyLicense(altered,testDevice,testModulus),"altered payload rejected");
+ check(!pocket::verifyLicense(juce::String(testLicense).dropLastCharacters(1)+(juce::String(testLicense).endsWith("0")?"1":"0"),testDevice,testModulus),"altered signature rejected");
+ check(!pocket::verifyLicense("DP1.invalid",testDevice)&&!pocket::verifyLicense(juce::String::repeatedString("a",8192),testDevice),"malformed keys rejected");
+ check(pocket::deviceCodeFromSystemId("fixture-machine","test")==testDevice,"cross-language numeric device hash");
+ check(pocket::canonicalDeviceCode(pocket::displayDeviceCode(testDevice))==testDevice,"grouped numeric code roundtrip");
+ check(pocket::canonicalDeviceCode(juce::String(testDevice).dropLastCharacters(1)+(juce::String(testDevice).endsWith("0")?"1":"0")).isEmpty(),"device typo checksum");
+ check(!pocket::verifyLicense(testLicense,pocket::deviceCodeFromSystemId("other-machine","test"),testModulus),"copied license rejected on another device");
+ check(!pocket::verifyLicense(testLicense,juce::String(),testModulus),"missing system ID cannot activate");
+ check(pocket::canonicalOnlineKey("duck-7k3m-9x2p-6r8n-4w5t")=="DUCK7K3M9X2P6R8N4W5T"&&pocket::canonicalOnlineKey("DUCK-invalid").isEmpty(),"short key syntax");
  auto p=std::make_unique<DuckPocketAudioProcessor>();DuckLicenseTestAccess::active(*p,false);
  juce::String error;check(!p->activateLicense(testLicense,error),"foreign signing key not persisted");
+ auto temp=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("duck-invalid-license",".ducklicense");
+ temp.replaceWithText(testLicense);check(!p->importLicenseFile(temp,error),"foreign file cannot activate");
+ temp.replaceWithText(juce::String::repeatedString("a",2048));check(!p->importLicenseFile(temp,error),"oversized license rejected");temp.deleteFile();
+ check(!p->startOnlineActivation("invalid",error)&&!p->onlineActivationBusy(),"invalid online key does not start network");
+#if ! JUCE_WINDOWS && ! JUCE_MAC
+ check(!p->startOnlineActivation("DUCK-7K3M-9X2P-6R8N-4W5T",error),"unconfigured API fails locally");
+#endif
  p->setRateAndBufferSizeDetails(48000,256);p->prepareToPlay(48000,256);
  juce::AudioBuffer<float> audio(4,256);juce::MidiBuffer midi;
  for(int block=0;block<30;++block){for(int n=0;n<256;++n){audio.setSample(0,n,.2f);audio.setSample(1,n,.3f);audio.setSample(2,n,.9f);audio.setSample(3,n,.9f);}p->processBlock(audio,midi);}

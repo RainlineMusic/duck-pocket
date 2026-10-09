@@ -98,19 +98,24 @@ Double-click the duck logo to play the embedded quack through the plug-in output
 
 ## Version 1.0.1: activation and sidechain audition
 
-Offline signed licenses activate all instances and formats for the current OS
-user. Without activation audio remains dry and latency-aligned; sessions cannot
-activate the plugin. See [LICENSE-SYSTEM.md](LICENSE-SYSTEM.md) for the precise
-signing protocol and server-side Python/PHP generators. The private signing PEM
-is delivered separately to the owner and must never enter this repository.
+Device-bound activation supports **Online (Recommended)** with a short purchase
+key and **Offline** with a numeric device code and a signed `.ducklicense` file.
+Offline files can be dragged into the activation panel or selected with the file
+picker. Activation is shared across instances/formats for the OS user; no network
+is needed after activation. Previous universal DP1 prototype keys are rejected.
+Without activation, audio remains dry and latency-aligned.
 
-The headphones button beside Sidechain Filter auditions the detector's actual
-post-filter signal with a 5 ms crossfade. Closing the editor or collapsing the
-filter panel switches audition off. All hover hints are removed.
+The online client is prepared for the future store API. Set the HTTPS endpoint
+through CMake or the GitHub repository variable `DUCK_LICENSE_API_URL`; until it
+is configured, Online reports this and Offline is available. No live store API or
+Lava integration is included. See [LICENSE-SYSTEM.md](LICENSE-SYSTEM.md) for the
+protocol, owner issuance commands, cryptography and deployment requirements.
 
-Actions build macOS universal VST3/AAX/AU/CLAP and Windows x64 VST3/AAX/CLAP.
-AU is macOS-only. CLAP uses the MIT clap-juce-extensions adapter pinned by commit.
-No EXE/PKG installer is built: download archives, apply your production signatures
-(AAX requires PACE), then build installers locally. Existing optional Apple
-signing settings remain available; unsigned/ad-hoc outputs are not guaranteed
-to pass Gatekeeper/SmartScreen.
+The headphones button beside Sidechain Filter auditions the existing post-filter
+sidechain with a 5 ms crossfade. Closing the editor or collapsing the lower panel
+stops audition; host transport preparation preserves the toggle. Hover hints are
+removed.
+
+macOS universal builds include VST3/AAX/AU/CLAP; Windows x64 includes VST3/AAX/CLAP.
+CI delivers archives, with **no PKG/EXE installer generation**. The owner signs and
+packages the downloaded binaries locally. AAX distribution still requires PACE.

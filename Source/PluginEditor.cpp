@@ -49,7 +49,9 @@ void PocketLook::drawButtonBackground(juce::Graphics& g,juce::Button& button,con
     g.setColour(down?t.ink:t.out.withAlpha(.75f));g.drawRoundedRectangle(r,2.5f,1.2f);
 }
 void PocketLook::drawButtonText(juce::Graphics& g,juce::TextButton& b,bool,bool){
-    if(b.getButtonText()=="OK"){g.setColour(ink());g.setFont(uiFont(15));g.drawText("OK",b.getLocalBounds(),juce::Justification::centred);return;}
+    if(b.getButtonText()=="OK"||b.getButtonText()=="Online (Recommended)"||b.getButtonText()=="Offline"||b.getButtonText()=="Copy code"||b.getButtonText()=="Choose file…"){
+        g.setColour(b.getToggleState()?tokens().out:ink());g.setFont(uiFont(13));g.drawFittedText(b.getButtonText(),b.getLocalBounds().reduced(4),juce::Justification::centred,1);return;
+    }
     auto r=b.getLocalBounds().toFloat();auto name=b.getButtonText();
     if(name=="freeze"||name=="listen")r=r.withSizeKeepingCentre(r.getWidth()*20.2746f/32.f,r.getHeight()*20.2746f/32.f);
     const auto controlInk=isDark()?tokens().out:ink();
@@ -202,16 +204,28 @@ DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioPr
 #endif
     addChildComponent(activationPanel);
     activationPanel.setOpaque(true);
-    activationPanel.addAndMakeVisible(activationTitle);activationPanel.addAndMakeVisible(activationMessage);
-    activationPanel.addAndMakeVisible(licenseInput);activationPanel.addAndMakeVisible(activateButton);
-    activationTitle.setFont(uiFont(20));activationMessage.setFont(uiFont(14));licenseInput.setFont(uiFont(14));
+    for(auto* c:std::initializer_list<juce::Component*>{&activationTitle,&activationMessage,&licenseInput,&activateButton,&onlineButton,&offlineButton,&deviceCodeInput,&deviceCodeLabel,&copyDeviceButton,&chooseLicenseButton})activationPanel.addAndMakeVisible(c);
+    activationTitle.setFont(uiFont(20));activationMessage.setFont(uiFont(13));licenseInput.setFont(uiFont(14));deviceCodeInput.setFont(uiFont(11));deviceCodeLabel.setFont(uiFont(13));
     activationTitle.setText("Activate Duck Pocket",juce::dontSendNotification);
     activationTitle.setJustificationType(juce::Justification::centred);
-    activationMessage.setText("Enter your license key to enable processing.",juce::dontSendNotification);
     activationMessage.setJustificationType(juce::Justification::centred);
-    licenseInput.setMultiLine(false);licenseInput.setTextToShowWhenEmpty("DP1.…",juce::Colours::grey);
-    activateButton.onClick=[this]{juce::String error;if(audioProcessor.activateLicense(licenseInput.getText(),error))activationPanel.setVisible(false);else activationMessage.setText(error,juce::dontSendNotification);};
-    licenseInput.onReturnKey=[this]{activateButton.triggerClick();};
+    licenseInput.setMultiLine(false);licenseInput.setInputRestrictions(64);licenseInput.setTextToShowWhenEmpty("DUCK-7K3M-9X2P-6R8N-4W5T",juce::Colours::grey);
+    deviceCodeInput.setMultiLine(false);deviceCodeInput.setReadOnly(true);deviceCodeInput.setText(pocket::displayDeviceCode(audioProcessor.licenseDeviceCode()),false);
+    deviceCodeLabel.setText("Device code",juce::dontSendNotification);
+    onlineButton.onClick=[this]{setActivationMode(false);};offlineButton.onClick=[this]{setActivationMode(true);};
+    copyDeviceButton.onClick=[this]{juce::SystemClipboard::copyTextToClipboard(deviceCodeInput.getText());};
+    activateButton.onClick=[this]{juce::String error;lastOnlineMessage.clear();if(audioProcessor.startOnlineActivation(licenseInput.getText(),error))activationMessage.setText("Activating…",juce::dontSendNotification);else activationMessage.setText(error,juce::dontSendNotification);};
+    licenseInput.onReturnKey=[this]{if(!audioProcessor.onlineActivationBusy())activateButton.triggerClick();};
+    activationPanel.onFile=[this](const juce::File& f){importLicense(f);};
+    chooseLicenseButton.onClick=[this]{
+        if(licenseChooser)return;
+        licenseChooser=std::make_unique<juce::FileChooser>("Select Duck Pocket license",juce::File(),"*.ducklicense;*.key;*.txt");
+        juce::Component::SafePointer<DuckPocketAudioProcessorEditor> safe(this);
+        licenseChooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe](const juce::FileChooser& chooser){
+            if(safe){const auto file=chooser.getResult();if(file.existsAsFile())safe->importLicense(file);safe->licenseChooser.reset();}
+        });
+    };
+    setActivationMode(false);
     activationPanel.setVisible(!audioProcessor.isActivated());resized();
     ready=true;p.editorWidth.store(width);PocketTrace discard;while(p.popTrace(discard)){}p.editorOpen.store(true);frameTick();
     // VBlank-driven rendering: long windows have a 30 fps budget; short
@@ -224,12 +238,23 @@ DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioPr
         frameTick();
     });
 }
-DuckPocketAudioProcessorEditor::~DuckPocketAudioProcessorEditor(){vblank.reset();
+DuckPocketAudioProcessorEditor::~DuckPocketAudioProcessorEditor(){licenseChooser.reset();vblank.reset();
 #if DUCK_ENABLE_OPENGL
     if(glowRenderer){glowRenderer->stop();}
     glowRenderer.reset();
 #endif
     audioProcessor.listenSidechain.store(false);if(attackGesture&&attackAttach)attackAttach->endGesture();attackAttach.reset();saveSize();audioProcessor.editorOpen.store(false);if(rangeGesture){lowAttach->endGesture();highAttach->endGesture();}if(processRangeGesture){processLowAttach->endGesture();processHighAttach->endGesture();}setLookAndFeel(nullptr);}
+void DuckPocketAudioProcessorEditor::setActivationMode(bool offline){
+    offlineActivation=offline;activationPanel.offline=offline;activationPanel.dragging=false;
+    onlineButton.setToggleState(!offline,juce::dontSendNotification);offlineButton.setToggleState(offline,juce::dontSendNotification);
+    licenseInput.setVisible(!offline);activateButton.setVisible(!offline);
+    for(auto* c:std::initializer_list<juce::Component*>{&deviceCodeInput,&deviceCodeLabel,&copyDeviceButton,&chooseLicenseButton})c->setVisible(offline);
+    activationMessage.setText(offline?(audioProcessor.licenseDeviceCode().isEmpty()?"System device ID is unavailable. Contact support.":"Send this device code to the seller. Then drag your license file here or choose it below."):"Enter your purchase key. Internet is needed only for activation.",juce::dontSendNotification);
+    copyDeviceButton.setEnabled(audioProcessor.licenseDeviceCode().isNotEmpty());lastOnlineMessage.clear();activationPanel.repaint();
+}
+void DuckPocketAudioProcessorEditor::importLicense(const juce::File& file){
+    juce::String error;if(audioProcessor.importLicenseFile(file,error))activationPanel.setVisible(false);else activationMessage.setText(error,juce::dontSendNotification);
+}
 void DuckPocketAudioProcessorEditor::saveSize(){if(!ready||!preferences)return;audioProcessor.editorWidth.store(getWidth());preferences->setValue("duckPocket.ui.compactWidth",getWidth());preferences->saveIfNeeded();resizeStamp=0;}
 void DuckPocketAudioProcessorEditor::invalidateChrome(){chromeValid=false;repaint();}
 void DuckPocketAudioProcessorEditor::setTheme(PocketTheme t,bool persist){if(t==PocketTheme::SolidWhite)t=PocketTheme::SolidDark;look.theme=t;if(persist&&preferences){preferences->setValue("duckPocket.ui.theme",t==PocketTheme::Neon?"neon":(t==PocketTheme::Amber?"amber":(t==PocketTheme::SolidDark?"solidDark":"solidDark")));preferences->saveIfNeeded();}chromeValid=false;for(auto& layer:softwarePlots)layer.reset();
@@ -333,9 +358,14 @@ void DuckPocketAudioProcessorEditor::resized(){
     expandButton.setBounds(scaled(320,753,160,36));
     listenButton.setVisible(filtersExpanded);listenButton.setBounds(scaled(477,789,32,32));
     activationPanel.setBounds(getLocalBounds());
-    const int panelWidth=juce::jmin(500,getWidth()-24),left=(getWidth()-panelWidth)/2,top=getHeight()/2-65;
-    activationTitle.setBounds(left,top,panelWidth,28);activationMessage.setBounds(left,top+30,panelWidth,40);
-    licenseInput.setBounds(left,top+76,panelWidth-64,30);activateButton.setBounds(left+panelWidth-56,top+76,56,30);
+    const int panelWidth=juce::jmin(500,getWidth()-24),left=(getWidth()-panelWidth)/2,top=getHeight()/2-125;
+    activationTitle.setBounds(left,top,panelWidth,28);
+    onlineButton.setBounds(left,top+40,(panelWidth-8)/2,30);offlineButton.setBounds(left+(panelWidth+8)/2,top+40,(panelWidth-8)/2,30);
+    activationMessage.setBounds(left,top+78,panelWidth,60);
+    licenseInput.setBounds(left,top+148,panelWidth-64,30);activateButton.setBounds(left+panelWidth-56,top+148,56,30);
+    deviceCodeLabel.setBounds(left,top+140,panelWidth,20);
+    deviceCodeInput.setBounds(left,top+166,panelWidth-96,30);copyDeviceButton.setBounds(left+panelWidth-88,top+166,88,30);
+    chooseLicenseButton.setBounds(left+(panelWidth-160)/2,top+212,160,32);
     activationPanel.toFront(false);
     sidechainRange.setVisible(filtersExpanded);processingRange.setVisible(filtersExpanded);
     sidechainRange.setBounds(scaled(65,815,670,28));processingRange.setBounds(scaled(65,862,670,28));
@@ -689,6 +719,8 @@ void DuckPocketAudioProcessorEditor::setOpenGL(bool enabled,bool persist){
 #endif
 void DuckPocketAudioProcessorEditor::frameTick(){
     activationPanel.setVisible(!audioProcessor.isActivated());
+    activateButton.setEnabled(!audioProcessor.onlineActivationBusy());
+    if(!offlineActivation){const auto message=audioProcessor.onlineActivationMessage();if(message.isNotEmpty()&&message!=lastOnlineMessage){lastOnlineMessage=message;activationMessage.setText(message,juce::dontSendNotification);}}
     listenButton.setToggleState(audioProcessor.listenSidechain.load(),juce::dontSendNotification);
 #if DUCK_ENABLE_OPENGL
     if(glowRenderer){const bool readyGL=glowRenderer->ready.load();if(readyGL&&!glWasReady){glWasReady=true;repaint();}

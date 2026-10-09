@@ -13,6 +13,12 @@ struct DuckUiTestAccess {
  static std::uint64_t nativeCaches(DuckPocketAudioProcessorEditor& e){return e.nativeChromeBuildCount;}
 #endif
  static bool activationShown(DuckPocketAudioProcessorEditor& e){return e.activationPanel.isVisible();}
+ static void activationMode(DuckPocketAudioProcessorEditor& e,bool offline){e.setActivationMode(offline);}
+ static juce::String deviceCode(DuckPocketAudioProcessorEditor& e){return e.deviceCodeInput.getText();}
+ static bool fileDropAccepted(DuckPocketAudioProcessorEditor& e){return e.activationPanel.isInterestedInFileDrag(juce::StringArray{"one.ducklicense"});}
+ static void invalidFile(DuckPocketAudioProcessorEditor& e){
+  const auto file=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("duck-ui-invalid",".ducklicense");file.replaceWithText("not a signed license");e.activationPanel.filesDropped(juce::StringArray{file.getFullPathName()},0,0);file.deleteFile();
+ }
  static void invalidKey(DuckPocketAudioProcessorEditor& e){e.licenseInput.setText("invalid");e.activateButton.onClick();}
  static void audition(DuckPocketAudioProcessorEditor& e){e.listenButton.onClick();}
  static void theme(DuckPocketAudioProcessorEditor& e,PocketTheme t){e.setTheme(t,false);}
@@ -90,6 +96,14 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
   DuckLicenseTestAccess::activate(p,false);DuckUiTestAccess::tick(*e);check(DuckUiTestAccess::activationShown(*e),"activation overlay shown without license");
   DuckUiTestAccess::invalidKey(*e);check(!p.isActivated()&&DuckUiTestAccess::activationShown(*e),"invalid key keeps overlay and audio locked");
   auto image=e->createComponentSnapshot(e->getLocalBounds(),true,1.f);auto stream=output.getChildFile("activation.png").createOutputStream();check(stream&&juce::PNGImageFormat().writeImageToStream(image,*stream),"activation capture");
+  check(!DuckUiTestAccess::fileDropAccepted(*e),"online mode does not import dragged files");
+  DuckUiTestAccess::activationMode(*e,true);check(DuckUiTestAccess::fileDropAccepted(*e),"offline file drop enabled");
+  check(pocket::canonicalDeviceCode(DuckUiTestAccess::deviceCode(*e))==p.licenseDeviceCode(),"offline shows the current device code");
+  DuckUiTestAccess::invalidFile(*e);check(!p.isActivated()&&DuckUiTestAccess::activationShown(*e),"invalid dropped file stays locked");
+  {auto capture=e->createComponentSnapshot(e->getLocalBounds(),true,1.f);auto file=output.getChildFile("activation-offline.png").createOutputStream();check(file&&juce::PNGImageFormat().writeImageToStream(capture,*file),"offline activation capture");}
+  e->setSize(400,453);DuckUiTestAccess::activationMode(*e,true);
+  {auto capture=e->createComponentSnapshot(e->getLocalBounds(),true,1.f);auto file=output.getChildFile("activation-offline-compact.png").createOutputStream();check(file&&juce::PNGImageFormat().writeImageToStream(capture,*file),"compact offline activation capture");}
+  e->setSize(800,905);DuckUiTestAccess::activationMode(*e,false);
   DuckLicenseTestAccess::activate(p);DuckUiTestAccess::tick(*e);check(!DuckUiTestAccess::activationShown(*e),"activation shared with open editor");
   p.listenSidechain.store(true);DuckUiTestAccess::collapse(*e,false);check(!p.listenSidechain.load(),"collapse stops audition");DuckUiTestAccess::collapse(*e,true);
  }
