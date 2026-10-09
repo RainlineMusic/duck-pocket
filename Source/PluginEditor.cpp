@@ -49,7 +49,7 @@ void PocketLook::drawButtonBackground(juce::Graphics& g,juce::Button& button,con
     g.setColour(down?t.ink:t.out.withAlpha(.75f));g.drawRoundedRectangle(r,2.5f,1.2f);
 }
 void PocketLook::drawButtonText(juce::Graphics& g,juce::TextButton& b,bool,bool){
-    if(b.getButtonText()=="OK"||b.getButtonText()=="Online (Recommended)"||b.getButtonText()=="Offline"||b.getButtonText()=="Copy code"||b.getButtonText()=="Choose file…"){
+    if(bool(b.getProperties().getWithDefault("pocket.activationText",false))){
         g.setColour(b.getToggleState()?tokens().out:ink());g.setFont(uiFont(13));g.drawFittedText(b.getButtonText(),b.getLocalBounds().reduced(4),juce::Justification::centred,1);return;
     }
     auto r=b.getLocalBounds().toFloat();auto name=b.getButtonText();
@@ -204,6 +204,7 @@ DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioPr
 #endif
     addChildComponent(activationPanel);
     activationPanel.setOpaque(true);
+    for(auto* button:{&activateButton,&onlineButton,&offlineButton,&copyDeviceButton,&chooseLicenseButton})button->getProperties().set("pocket.activationText",true);
     for(auto* c:std::initializer_list<juce::Component*>{&activationTitle,&activationMessage,&licenseInput,&activateButton,&onlineButton,&offlineButton,&deviceCodeInput,&deviceCodeLabel,&copyDeviceButton,&chooseLicenseButton})activationPanel.addAndMakeVisible(c);
     activationTitle.setFont(uiFont(20));activationMessage.setFont(uiFont(13));licenseInput.setFont(uiFont(14));deviceCodeInput.setFont(uiFont(11));deviceCodeLabel.setFont(uiFont(13));
     activationTitle.setText("Activate Duck Pocket",juce::dontSendNotification);
@@ -214,7 +215,7 @@ DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioPr
     deviceCodeLabel.setText("Device code",juce::dontSendNotification);
     onlineButton.onClick=[this]{setActivationMode(false);};offlineButton.onClick=[this]{setActivationMode(true);};
     copyDeviceButton.onClick=[this]{juce::SystemClipboard::copyTextToClipboard(deviceCodeInput.getText());};
-    activateButton.onClick=[this]{juce::String error;lastOnlineMessage.clear();if(audioProcessor.startOnlineActivation(licenseInput.getText(),error))activationMessage.setText("Activating…",juce::dontSendNotification);else activationMessage.setText(error,juce::dontSendNotification);};
+    activateButton.onClick=[this]{juce::String error;lastOnlineMessage.clear();if(audioProcessor.startOnlineActivation(licenseInput.getText(),error))activationMessage.setText("Activating...",juce::dontSendNotification);else activationMessage.setText(error,juce::dontSendNotification);};
     licenseInput.onReturnKey=[this]{if(!audioProcessor.onlineActivationBusy())activateButton.triggerClick();};
     activationPanel.onFile=[this](const juce::File& f){importLicense(f);};
     chooseLicenseButton.onClick=[this]{

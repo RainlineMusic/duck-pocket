@@ -118,7 +118,7 @@ public:
         if(deviceCode.isEmpty()){error="System device ID is unavailable. Contact support.";return false;}
         const juce::String api=DUCK_LICENSE_API_URL;
         if(!api.startsWithIgnoreCase("https://")||juce::URL(api).getDomain().isEmpty()){error="Online activation is not configured yet. Use Offline.";return false;}
-        message="Activating…";request=std::make_unique<LicenseRequest>(api,key,deviceCode);startTimer(100);return true;
+        message="Activating...";request=std::make_unique<LicenseRequest>(api,key,deviceCode);startTimer(100);return true;
     }
 private:
     juce::String cached,message;

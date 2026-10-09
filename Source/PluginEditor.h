@@ -150,7 +150,7 @@ private:
     } activationPanel;
     juce::Label activationTitle,activationMessage;
     juce::TextEditor licenseInput;
-    juce::TextButton activateButton{"OK"},onlineButton{"Online (Recommended)"},offlineButton{"Offline"},copyDeviceButton{"Copy code"},chooseLicenseButton{"Choose file…"};
+    juce::TextButton activateButton{"OK"},onlineButton{"Online (Recommended)"},offlineButton{"Offline"},copyDeviceButton{"Copy code"},chooseLicenseButton{"Choose file"};
     juce::TextEditor deviceCodeInput;
     juce::Label deviceCodeLabel;
     std::unique_ptr<juce::FileChooser> licenseChooser;
