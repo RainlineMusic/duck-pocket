@@ -40,7 +40,7 @@ inline juce::String displayDeviceCode(const juce::String& code) {
 inline juce::String canonicalOnlineKey(const juce::String& input) {
     if(input.length()>64)return {};
     const auto key=input.removeCharacters(" -\r\n\t").toUpperCase();
-    return key.length()==20&&key.startsWith("DUCK")&&key.substring(4).containsOnly("0123456789ABCDEFGHJKMNPQRSTVWXYZ")?key:juce::String();
+    return key.length()==20&&key.startsWith("DUCK")&&key.substring(4).containsOnly("0123456789ABCDEFGHJKLMNPQRSTUVWXYZ")?key:juce::String();
 }
 inline bool verifyLicense(const juce::String& input,const juce::String& deviceCode,const char* publicModulus=licenseModulus) {
     if(input.length()>1024)return false;
@@ -78,7 +78,16 @@ private:
         s->withCustomRequestCommand("POST").withExtraHeaders("Content-Type: application/json\r\nAccept: application/json\r\n").withConnectionTimeout(8000).withNumRedirectsToFollow(0);
         {const juce::ScopedLock l(lock);stream=s;}
         if(threadShouldExit()){s->cancel();done.store(true,std::memory_order_release);return;}
-        if(!s->connect(nullptr)||s->getStatusCode()!=200)error="Online activation failed. Check your key or use Offline.";
+        if(!s->connect(nullptr))error="Cannot connect to activation server. Try again or use Offline.";
+        else if(s->getStatusCode()!=200) {
+            switch(s->getStatusCode()) {
+                case 403:error="Invalid or disabled key. Check your purchase email.";break;
+                case 409:error="Device limit reached. Contact rainlinemusic@gmail.com.";break;
+                case 429:error="Too many attempts. Try again in a minute.";break;
+                case 503:error="Activation server is temporarily unavailable. Try again later.";break;
+                default:error="Online activation failed. Try again or use Offline.";break;
+            }
+        }
         else {
             juce::MemoryOutputStream body;std::array<char,512> buffer{};
             while(!threadShouldExit()&&!s->isExhausted()&&body.getDataSize()<=8192){const auto n=s->read(buffer.data(),int(buffer.size()));if(n<=0)break;body.write(buffer.data(),size_t(n));}

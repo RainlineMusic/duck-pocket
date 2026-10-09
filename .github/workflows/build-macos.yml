@@ -16,7 +16,7 @@ concurrency:
 
 env:
   PLUGIN_VERSION: "1.0.1"
-  DUCK_LICENSE_API_URL: ${{ vars.DUCK_LICENSE_API_URL }}
+  DUCK_LICENSE_API_URL: ${{ vars.DUCK_LICENSE_API_URL || 'https://rainlinemusic.su/api/v1/activate' }}
 
 jobs:
   macos:
