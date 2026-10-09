@@ -21,7 +21,7 @@ env:
 jobs:
   macos:
     runs-on: macos-14
-    timeout-minutes: 40
+    timeout-minutes: 90
     env:
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -97,28 +97,6 @@ jobs:
           lipo "$VST3/Contents/MacOS/Duck Pocket" -verify_arch arm64 x86_64
           lipo "$AAX/Contents/MacOS/Duck Pocket" -verify_arch arm64 x86_64
 
-      - name: Notarize and staple macOS plug-ins
-        if: steps.apple-signing.outputs.enabled == 'true'
-        shell: bash
-        run: |
-          if [[ -z "$APPLE_ID" || -z "$APPLE_TEAM_ID" || -z "$APPLE_APP_PASSWORD" ]]; then exit 0; fi
-          VST3="build/DuckPocket_artefacts/Release/VST3/Duck Pocket.vst3"
-          AAX="build/DuckPocket_artefacts/Release/AAX/Duck Pocket.aaxplugin"
-          ditto -c -k --keepParent "$VST3" "$RUNNER_TEMP/vst3-notary.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/vst3-notary.zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
-          xcrun stapler staple "$VST3"
-          ditto -c -k --keepParent "$AAX" "$RUNNER_TEMP/aax-notary.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/aax-notary.zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
-          xcrun stapler staple "$AAX"
-
-      - name: Validate macOS VST3
-        run: |
-          set -o pipefail
-          curl -fL https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip -o pluginval.zip
-          unzip -q pluginval.zip
-          chmod +x pluginval.app/Contents/MacOS/pluginval
-          pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --validate "$PWD/build/DuckPocket_artefacts/Release/VST3/Duck Pocket.vst3" 2>&1 | tee pluginval-macos.log
-
       - name: Sign AU and CLAP
         shell: bash
         run: |
@@ -131,31 +109,43 @@ jobs:
             codesign --verify --deep --strict "$bundle"
           done
 
-      - name: Notarize and staple AU and CLAP
+      # AAX is signed with PACE locally; notarize the final PACE output locally.
+      - name: Notarize and staple VST3 AU and CLAP
         if: steps.apple-signing.outputs.enabled == 'true'
+        timeout-minutes: 55
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "$APPLE_ID" || -z "$APPLE_TEAM_ID" || -z "$APPLE_APP_PASSWORD" ]]; then
-            echo "::warning::AU and CLAP are signed but not notarized: missing Apple notarization secrets."
+            echo "::warning::Plug-ins are signed but not notarized: missing Apple notarization secrets."
             exit 0
           fi
           mkdir -p notary-logs
-          for format in AU CLAP; do
-            if [[ "$format" == "AU" ]]; then extension=component; else extension=clap; fi
-            bundle="build/DuckPocket_artefacts/Release/$format/Duck Pocket.$extension"
-            archive="$RUNNER_TEMP/duck-$format-notary.zip"
-            result="notary-logs/$format-submit.json"
-            ditto -c -k --keepParent "$bundle" "$archive"
-            xcrun notarytool submit "$archive" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$result"
-            if ! python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("Notarization status:",r.get("status")); sys.exit(0 if r.get("status") == "Accepted" else 1)' "$result"; then
-              submission_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "$result")
-              if [[ -n "$submission_id" ]]; then
-                xcrun notarytool log "$submission_id" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" "notary-logs/$format-log.json" || true
-              fi
-              echo "::error::$format notarization was not accepted."
-              exit 1
-            fi
+          staging="$RUNNER_TEMP/duck-notary-payload"
+          mkdir -p "$staging"
+          bundles=(
+            "build/DuckPocket_artefacts/Release/VST3/Duck Pocket.vst3"
+            "build/DuckPocket_artefacts/Release/AU/Duck Pocket.component"
+            "build/DuckPocket_artefacts/Release/CLAP/Duck Pocket.clap"
+          )
+          for bundle in "${bundles[@]}"; do
+            ditto "$bundle" "$staging/$(basename "$bundle")"
+          done
+          ditto -c -k "$staging" "$RUNNER_TEMP/duck-notary.zip"
+          auth=(--apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD")
+          xcrun notarytool submit "$RUNNER_TEMP/duck-notary.zip" "${auth[@]}" --output-format json > notary-logs/submit.json
+          submission_id=$(python3 -c 'import json; print(json.load(open("notary-logs/submit.json"))["id"])')
+          echo "Apple submission ID: $submission_id"
+          # Keep the submission ID even when Apple's processing exceeds the wait limit.
+          wait_rc=0
+          xcrun notarytool wait "$submission_id" "${auth[@]}" --timeout 45m --output-format json > notary-logs/wait.json || wait_rc=$?
+          xcrun notarytool info "$submission_id" "${auth[@]}" --output-format json > notary-logs/info.json
+          if ! python3 -c 'import json,sys; r=json.load(open("notary-logs/info.json")); print("Notarization status:",r.get("status")); sys.exit(0 if r.get("status") == "Accepted" else 1)'; then
+            xcrun notarytool log "$submission_id" "${auth[@]}" notary-logs/apple-log.json || true
+            echo "::error::Apple has not accepted submission $submission_id (wait exit code $wait_rc). See notarization-log-macos."
+            exit 1
+          fi
+          for bundle in "${bundles[@]}"; do
             xcrun stapler staple "$bundle"
             xcrun stapler validate "$bundle"
             codesign --verify --deep --strict "$bundle"
@@ -164,9 +154,17 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: notarization-log-macos-AU-CLAP
+          name: notarization-log-macos
           path: notary-logs
           if-no-files-found: ignore
+
+      - name: Validate macOS VST3
+        run: |
+          set -o pipefail
+          curl -fL https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip -o pluginval.zip
+          unzip -q pluginval.zip
+          chmod +x pluginval.app/Contents/MacOS/pluginval
+          pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --validate "$PWD/build/DuckPocket_artefacts/Release/VST3/Duck Pocket.vst3" 2>&1 | tee pluginval-macos.log
 
       - name: Archive macOS AU and CLAP
         run: |
