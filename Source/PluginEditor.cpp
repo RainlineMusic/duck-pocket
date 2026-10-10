@@ -250,7 +250,7 @@ void DuckPocketAudioProcessorEditor::setActivationMode(bool offline){
     onlineButton.setToggleState(!offline,juce::dontSendNotification);offlineButton.setToggleState(offline,juce::dontSendNotification);
     licenseInput.setVisible(!offline);activateButton.setVisible(!offline);
     for(auto* c:std::initializer_list<juce::Component*>{&deviceCodeInput,&deviceCodeLabel,&copyDeviceButton,&chooseLicenseButton})c->setVisible(offline);
-    activationMessage.setText(offline?(audioProcessor.licenseDeviceCode().isEmpty()?"System device ID is unavailable. Contact support.":"Send this device code to the seller. Then drag your license file here or choose it below."):"Enter your purchase key. Internet is needed only for activation.",juce::dontSendNotification);
+    activationMessage.setText(offline?(audioProcessor.licenseDeviceCode().isEmpty()?"System device ID is unavailable. Contact support.":"Copy the device code below. Get your file in Devices at rainlinemusic.su/account, then drag it here."):"Enter your purchase key. Manage activations at rainlinemusic.su/account.",juce::dontSendNotification);
     copyDeviceButton.setEnabled(audioProcessor.licenseDeviceCode().isNotEmpty());lastOnlineMessage.clear();activationPanel.repaint();
 }
 void DuckPocketAudioProcessorEditor::importLicense(const juce::File& file){
@@ -721,7 +721,7 @@ void DuckPocketAudioProcessorEditor::setOpenGL(bool enabled,bool persist){
 void DuckPocketAudioProcessorEditor::frameTick(){
     activationPanel.setVisible(!audioProcessor.isActivated());
     activateButton.setEnabled(!audioProcessor.onlineActivationBusy());
-    if(!offlineActivation){const auto message=audioProcessor.onlineActivationMessage();if(message.isNotEmpty()&&message!=lastOnlineMessage){lastOnlineMessage=message;activationMessage.setText(message,juce::dontSendNotification);}}
+    {const auto message=audioProcessor.onlineActivationMessage();if(message.isNotEmpty()&&message!=lastOnlineMessage){lastOnlineMessage=message;activationMessage.setText(message,juce::dontSendNotification);}}
     listenButton.setToggleState(audioProcessor.listenSidechain.load(),juce::dontSendNotification);
 #if DUCK_ENABLE_OPENGL
     if(glowRenderer){const bool readyGL=glowRenderer->ready.load();if(readyGL&&!glWasReady){glWasReady=true;repaint();}
@@ -788,4 +788,5 @@ void DuckPocketAudioProcessorEditor::frameTick(){
     if(!gainFrozen)repaint(gainArea);
     if(!scopeFrozen)repaint(scopeArea);
 }
+
 

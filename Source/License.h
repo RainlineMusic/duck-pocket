@@ -82,7 +82,7 @@ private:
         else if(s->getStatusCode()!=200) {
             switch(s->getStatusCode()) {
                 case 403:error="Invalid or disabled key. Check your purchase email.";break;
-                case 409:error="Device limit reached. Contact rainlinemusic@gmail.com.";break;
+                case 409:error="Device limit reached. Manage devices at rainlinemusic.su/account.";break;
                 case 429:error="Too many attempts. Try again in a minute.";break;
                 case 503:error="Activation server is temporarily unavailable. Try again later.";break;
                 default:error="Online activation failed. Try again or use Offline.";break;
@@ -98,23 +98,79 @@ private:
         done.store(true,std::memory_order_release);
     }
 };
+
+// Only a complete, authenticated transport response matching the current token
+// can revoke it. Errors, timeouts, throttling and unrelated replies mean offline.
+enum class VerificationResult { offline, valid, revoked };
+inline VerificationResult verificationResult(const juce::var& json,const juce::String& token,
+                                             const juce::String& device,int status) {
+    if(status!=200&&status!=403)return VerificationResult::offline;
+    auto* o=json.getDynamicObject();
+    if(o==nullptr||!o->getProperty("valid").isBool())return VerificationResult::offline;
+    const auto digest=juce::SHA256(token.toRawUTF8(),size_t(token.getNumBytesAsUTF8())).toHexString();
+    if(o->getProperty("license_id").toString()!=token.substring(4,40)
+       ||o->getProperty("device").toString()!=device
+       ||o->getProperty("token_hash").toString()!=digest)return VerificationResult::offline;
+    if(bool(o->getProperty("valid")))return status==200?VerificationResult::valid:VerificationResult::offline;
+    return o->getProperty("error").toString()=="revoked"?VerificationResult::revoked:VerificationResult::offline;
+}
+inline bool verificationRevoked(const juce::var& json,const juce::String& token,
+                                const juce::String& device,int status) {
+    return verificationResult(json,token,device,status)==VerificationResult::revoked;
+}
+inline bool licenseMarkedRevoked(const juce::String& token,const juce::String& marker) {
+    return marker.isNotEmpty()&&marker==juce::SHA256(token.toRawUTF8(),size_t(token.getNumBytesAsUTF8())).toHexString();
+}
+class LicenseVerification final : private juce::Thread {
+public:
+    LicenseVerification(juce::String endpoint,juce::String value,juce::String code)
+        : Thread("Duck verification"),token(std::move(value)),api(std::move(endpoint)),device(std::move(code)) { startThread(); }
+    ~LicenseVerification() override {
+        signalThreadShouldExit(); std::shared_ptr<juce::WebInputStream> s;
+        { const juce::ScopedLock l(lock); s=stream; } if(s)s->cancel();stopThread(-1);
+    }
+    const juce::String token;
+    std::atomic<bool> done{false}; VerificationResult result=VerificationResult::offline;
+private:
+    juce::String api,device; juce::CriticalSection lock;
+    std::shared_ptr<juce::WebInputStream> stream;
+    void run() override {
+        auto o=std::make_unique<juce::DynamicObject>();o->setProperty("token",token);o->setProperty("device",device);
+        auto s=std::make_shared<juce::WebInputStream>(juce::URL(api).withPOSTData(juce::JSON::toString(juce::var(o.release()),true)),true);
+        s->withCustomRequestCommand("POST").withExtraHeaders("Content-Type: application/json\r\nAccept: application/json\r\n").withConnectionTimeout(3000).withNumRedirectsToFollow(0);
+        {const juce::ScopedLock l(lock);stream=s;}
+        if(!threadShouldExit()&&s->connect(nullptr)) {
+            const auto status=s->getStatusCode();juce::MemoryOutputStream body;std::array<char,512> buffer{};
+            while(!threadShouldExit()&&!s->isExhausted()&&body.getDataSize()<=8192){const auto n=s->read(buffer.data(),int(buffer.size()));if(n<=0)break;body.write(buffer.data(),size_t(n));}
+            if(!threadShouldExit()&&!s->isError()&&s->isExhausted()&&body.getDataSize()<=8192)
+                result=verificationResult(juce::JSON::parse(body.toString()),token,device,status);
+        }
+        done.store(true,std::memory_order_release);
+    }
+};
 class LicenseState : private juce::Timer {
 public:
     std::atomic<bool> active{false};
     const juce::String deviceCode=localDeviceCode();
     static juce::File file() {return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("RainlineMusic/DuckPocket/license.key");}
-    LicenseState(){refresh();startTimer(2000);}
-    ~LicenseState() override {stopTimer();request.reset();}
+    LicenseState(){refresh();startTimer(100);}
+    // Safe to call from a processor constructor; timer owns request state.
+    void checkOnOpen() noexcept {verificationWanted.store(true,std::memory_order_release);}
+    ~LicenseState() override {stopTimer();request.reset();verification.reset();}
     bool onlineBusy() const {return request!=nullptr;}
     juce::String onlineMessage() const {return message;}
-    bool activate(const juce::String& key,juce::String& error){
+    bool activate(const juce::String& key,juce::String& error,bool serverConfirmed=false){
         if(deviceCode.isEmpty()){error="System device ID is unavailable. Contact support.";return false;}
         if(!verifyLicense(key,deviceCode)){error="Invalid license or license belongs to another device.";return false;}
         const auto target=file();
         if(!target.getParentDirectory().createDirectory()){error="Cannot create license folder.";return false;}
         juce::TemporaryFile temporary(target);
         if(!temporary.getFile().replaceWithText(key.trim())||!temporary.overwriteTargetFileWithTemporary()){error="Cannot save license. Check folder permissions.";return false;}
-        refresh();return active.load(std::memory_order_acquire);
+        ++licenseRevision;
+        if(serverConfirmed){revocationFile().deleteFile();sessionRevoked.clear();}
+        checked=false;refresh();checkOnOpen();
+        if(!active.load(std::memory_order_acquire)){error="This activation was revoked. Reactivate in your account; reconnect to verify.";return false;}
+        return true;
     }
     bool importFile(const juce::File& source,juce::String& error) {
         if(!source.existsAsFile()||source.getSize()<=0||source.getSize()>1024){error="Select a valid Duck Pocket license file (up to 1 KB).";return false;}
@@ -130,13 +186,61 @@ public:
         message="Activating...";request=std::make_unique<LicenseRequest>(api,key,deviceCode);startTimer(100);return true;
     }
 private:
-    juce::String cached,message;
+    juce::String cached,cachedRevocation,sessionRevoked,message;
     bool checked=false;
     std::unique_ptr<LicenseRequest> request;
-    void refresh(){const auto target=file();const auto key=target.getSize()<=1024?target.loadFileAsString().trim():juce::String();if(!checked||key!=cached){cached=key;checked=true;active.store(verifyLicense(key,deviceCode),std::memory_order_release);}}
+    std::unique_ptr<LicenseVerification> verification;
+    std::atomic<bool> verificationWanted{false};
+    double verificationStarted=0;
+    uint64_t licenseRevision=0,verificationRevision=0;
+    static juce::File revocationFile(){return file().getSiblingFile("license.revoked");}
+    void refresh(){
+        const auto target=file();
+        const auto key=target.getSize()<=1024?target.loadFileAsString().trim():juce::String();
+        const auto marker=revocationFile().getSize()<=128?revocationFile().loadFileAsString().trim():juce::String();
+        if(!checked||key!=cached||marker!=cachedRevocation){
+            if(key!=cached)++licenseRevision;
+            cached=key;cachedRevocation=marker;checked=true;
+            const bool revoked=licenseMarkedRevoked(key,marker)||licenseMarkedRevoked(key,sessionRevoked);
+            active.store(!revoked&&verifyLicense(key,deviceCode),std::memory_order_release);
+        }
+    }
     void timerCallback() override {
-        if(request){if(!request->done.load(std::memory_order_acquire))return;message=request->error;if(message.isEmpty()&&!activate(request->license,message)){}request.reset();startTimer(2000);}
-        refresh();
+        refresh(); // Reject stale replies if another plug-in format replaced the file.
+        if(verification){
+            if(!verification->done.load(std::memory_order_acquire)&&juce::Time::getMillisecondCounterHiRes()-verificationStarted>5000)verification.reset();
+            else if(verification->done.load(std::memory_order_acquire)){
+                if(cached==verification->token&&licenseRevision==verificationRevision){
+                    if(verification->result==VerificationResult::revoked){
+                        sessionRevoked=juce::SHA256(cached.toRawUTF8(),size_t(cached.getNumBytesAsUTF8())).toHexString();
+                        revocationFile().replaceWithText(sessionRevoked);
+                        active.store(false,std::memory_order_release);
+                        message="Activation revoked. Open your account to activate this device again.";
+                    }else if(verification->result==VerificationResult::valid){
+                        revocationFile().deleteFile();sessionRevoked.clear();checked=false;refresh();
+                        message.clear();
+                    }
+                }
+                verification.reset();
+            }
+        }
+        if(request){
+            if(!request->done.load(std::memory_order_acquire))return;
+            message=request->error;
+            if(message.isEmpty())activate(request->license,message,true);
+            request.reset();
+        }
+        // One attempt for each explicit open/import event. No retry timer.
+        if(verificationWanted.exchange(false,std::memory_order_acq_rel)&&!verification&&verifyLicense(cached,deviceCode)){
+            const juce::String activationApi=DUCK_LICENSE_API_URL;
+            juce::String verifyApi;
+            if(activationApi.endsWith("/activate")||activationApi.endsWith("route=activate"))verifyApi=activationApi.dropLastCharacters(8)+"verify";
+            if(verifyApi.startsWithIgnoreCase("https://")&&!juce::URL(verifyApi).getDomain().isEmpty()){
+                verificationStarted=juce::Time::getMillisecondCounterHiRes();verificationRevision=licenseRevision;
+                verification=std::make_unique<LicenseVerification>(verifyApi,cached,deviceCode);
+            }
+        }
+        refresh();startTimer(request||verification?100:2000);
     }
 };
 }
