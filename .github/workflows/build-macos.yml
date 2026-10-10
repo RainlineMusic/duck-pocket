@@ -21,15 +21,12 @@ env:
 jobs:
   macos:
     runs-on: macos-14
-    timeout-minutes: 150
+    timeout-minutes: 60
     env:
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
       MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -109,59 +106,7 @@ jobs:
             codesign --verify --deep --strict "$bundle"
           done
 
-      # AAX is signed with PACE locally; notarize the final PACE output locally.
-      - name: Notarize and staple VST3 AU and CLAP
-        if: steps.apple-signing.outputs.enabled == 'true'
-        timeout-minutes: 100
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "$APPLE_ID" || -z "$APPLE_TEAM_ID" || -z "$APPLE_APP_PASSWORD" ]]; then
-            echo "::warning::Plug-ins are signed but not notarized: missing Apple notarization secrets."
-            exit 0
-          fi
-          mkdir -p notary-logs
-          staging="$RUNNER_TEMP/duck-notary-payload"
-          mkdir -p "$staging"
-          bundles=(
-            "build/DuckPocket_artefacts/Release/VST3/Duck Pocket.vst3"
-            "build/DuckPocket_artefacts/Release/AU/Duck Pocket.component"
-            "build/DuckPocket_artefacts/Release/CLAP/Duck Pocket.clap"
-          )
-          for bundle in "${bundles[@]}"; do
-            ditto "$bundle" "$staging/$(basename "$bundle")"
-          done
-          ditto -c -k "$staging" "$RUNNER_TEMP/duck-notary.zip"
-          auth=(--apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD")
-          xcrun notarytool submit "$RUNNER_TEMP/duck-notary.zip" "${auth[@]}" --output-format json > notary-logs/submit.json
-          submission_id=$(python3 -c 'import json; print(json.load(open("notary-logs/submit.json"))["id"])')
-          echo "Apple submission ID: $submission_id"
-          # Keep the submission ID even when Apple's processing exceeds the wait limit.
-          wait_rc=0
-          xcrun notarytool wait "$submission_id" "${auth[@]}" --timeout 90m --output-format json > notary-logs/wait.json || wait_rc=$?
-          xcrun notarytool info "$submission_id" "${auth[@]}" --output-format json > notary-logs/info.json
-          if ! python3 -c 'import json,sys; r=json.load(open("notary-logs/info.json")); print("Notarization status:",r.get("status")); sys.exit(0 if r.get("status") == "Accepted" else 1)'; then
-            xcrun notarytool log "$submission_id" "${auth[@]}" notary-logs/apple-log.json || true
-            status=$(python3 -c 'import json; print(json.load(open("notary-logs/info.json")).get("status", "Unknown"))')
-            if [[ "$status" == "In Progress" ]]; then
-              echo "::error::Apple is still processing submission $submission_id after the wait limit; this is not a rejection. See notarization-log-macos."
-            else
-              echo "::error::Apple notarization status is $status for submission $submission_id (wait exit code $wait_rc). See notarization-log-macos."
-            fi
-            exit 1
-          fi
-          for bundle in "${bundles[@]}"; do
-            xcrun stapler staple "$bundle"
-            xcrun stapler validate "$bundle"
-            codesign --verify --deep --strict "$bundle"
-          done
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: notarization-log-macos
-          path: notary-logs
-          if-no-files-found: ignore
+      # Apple notarization is performed locally after downloading signed bundles.
 
       - name: Validate macOS VST3
         run: |

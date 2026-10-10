@@ -45,8 +45,9 @@ void PocketLook::drawButtonBackground(juce::Graphics& g,juce::Button& button,con
     if(bool(button.getProperties().getWithDefault("pocket.activationText",false))){
         const auto t=tokens();const auto r=button.getLocalBounds().toFloat().reduced(.5f);
         const bool selected=button.getToggleState()||button.getButtonText()=="Activate";
-        g.setColour(selected?t.out.withAlpha(down?.24f:(hover?.20f:.14f)):(hover?t.raised.brighter(.06f):t.glass));g.fillRoundedRectangle(r,6);
-        g.setColour((selected?t.out:t.border).withAlpha(selected?.7f:.8f));g.drawRoundedRectangle(r,6,1);return;
+        const float scale=float(button.getProperties().getWithDefault("pocket.activationScale",1.5f));
+        g.setColour(selected?t.out.withAlpha(down?.24f:(hover?.20f:.14f)):(hover?t.raised.brighter(.06f):t.glass));g.fillRoundedRectangle(r,6*scale);
+        g.setColour((selected?t.out:t.border).withAlpha(selected?.7f:.8f));g.drawRoundedRectangle(r,6*scale,1);return;
     }
     if(button.getButtonText()=="expand")return;
     const auto t=tokens();auto r=button.getLocalBounds().toFloat().reduced(1);
@@ -56,7 +57,8 @@ void PocketLook::drawButtonBackground(juce::Graphics& g,juce::Button& button,con
 }
 void PocketLook::drawButtonText(juce::Graphics& g,juce::TextButton& b,bool,bool){
     if(bool(b.getProperties().getWithDefault("pocket.activationText",false))){
-        g.setColour((b.getToggleState()?tokens().out:ink()).withAlpha(b.isEnabled()?1.f:.45f));g.setFont(uiFont(12));g.drawFittedText(b.getButtonText(),b.getLocalBounds().reduced(6),juce::Justification::centred,1);return;
+        const float scale=float(b.getProperties().getWithDefault("pocket.activationScale",1.5f));
+        g.setColour((b.getToggleState()?tokens().out:ink()).withAlpha(b.isEnabled()?1.f:.45f));g.setFont(uiFont(12*scale));g.drawFittedText(b.getButtonText(),b.getLocalBounds().reduced(juce::roundToInt(6*scale)),juce::Justification::centred,1);return;
     }
     auto r=b.getLocalBounds().toFloat();auto name=b.getButtonText();
     if(name=="freeze"||name=="listen")r=r.withSizeKeepingCentre(r.getWidth()*20.2746f/32.f,r.getHeight()*20.2746f/32.f);
@@ -211,18 +213,19 @@ DuckPocketAudioProcessorEditor::DuckPocketAudioProcessorEditor(DuckPocketAudioPr
     addChildComponent(activationPanel);
     activationPanel.setOpaque(true);
     for(auto* button:{&activateButton,&onlineButton,&offlineButton,&copyDeviceButton,&chooseLicenseButton})button->getProperties().set("pocket.activationText",true);
-    for(auto* c:std::initializer_list<juce::Component*>{&activationTitle,&activationMessage,&licenseInput,&activateButton,&onlineButton,&offlineButton,&deviceCodeInput,&deviceCodeLabel,&copyDeviceButton,&chooseLicenseButton})activationPanel.addAndMakeVisible(c);
+    for(auto* c:std::initializer_list<juce::Component*>{&activationTitle,&activationMessage,&activationStatus,&licenseInput,&activateButton,&onlineButton,&offlineButton,&deviceCodeInput,&deviceCodeLabel,&copyDeviceButton,&chooseLicenseButton})activationPanel.addAndMakeVisible(c);
     activationTitle.setFont(pocketFont(19,false,true));activationMessage.setFont(uiFont(12));licenseInput.setFont(uiFont(13));deviceCodeInput.setFont(uiFont(11));deviceCodeLabel.setFont(uiFont(12));
     activationTitle.setText("Duck Pocket",juce::dontSendNotification);activateButton.setButtonText("Activate");
     activationTitle.setJustificationType(juce::Justification::centred);
     activationMessage.setJustificationType(juce::Justification::centred);
+    activationStatus.setJustificationType(juce::Justification::centred);
     licenseInput.setMultiLine(false);licenseInput.setInputRestrictions(64);licenseInput.setTextToShowWhenEmpty("DUCK-7K3M-9X2P-6R8N-4W5T",juce::Colours::grey);
     deviceCodeInput.setMultiLine(true,true);deviceCodeInput.setReadOnly(true);deviceCodeInput.setText(pocket::displayDeviceCode(audioProcessor.licenseDeviceCode()),false);
     for(auto* input:{&licenseInput,&deviceCodeInput}){input->setIndents(8,6);input->setScrollbarsShown(false);}
     deviceCodeLabel.setText("Device code",juce::dontSendNotification);
     onlineButton.onClick=[this]{setActivationMode(false);};offlineButton.onClick=[this]{setActivationMode(true);};
     copyDeviceButton.onClick=[this]{juce::SystemClipboard::copyTextToClipboard(pocket::displayDeviceCode(audioProcessor.licenseDeviceCode()));};
-    activateButton.onClick=[this]{juce::String error;lastOnlineMessage.clear();if(audioProcessor.startOnlineActivation(licenseInput.getText(),error))activationMessage.setText("Activating...",juce::dontSendNotification);else activationMessage.setText(error,juce::dontSendNotification);};
+    activateButton.onClick=[this]{juce::String error;lastOnlineMessage.clear();if(audioProcessor.startOnlineActivation(licenseInput.getText(),error))activationStatus.setText("Activating...",juce::dontSendNotification);else activationStatus.setText(error,juce::dontSendNotification);};
     licenseInput.onReturnKey=[this]{if(!audioProcessor.onlineActivationBusy())activateButton.triggerClick();};
     activationPanel.onFile=[this](const juce::File& f){importLicense(f);};
     chooseLicenseButton.onClick=[this]{
@@ -258,10 +261,11 @@ void DuckPocketAudioProcessorEditor::setActivationMode(bool offline){
     licenseInput.setVisible(!offline);activateButton.setVisible(!offline);
     for(auto* c:std::initializer_list<juce::Component*>{&deviceCodeInput,&deviceCodeLabel,&copyDeviceButton,&chooseLicenseButton})c->setVisible(offline);
     activationMessage.setText(offline?(audioProcessor.licenseDeviceCode().isEmpty()?"System device ID is unavailable. Contact support.":"Get your file at rainlinemusic.su/account.\nDrop it here or choose a file below."):"Enter the license key from your purchase email.",juce::dontSendNotification);
+    activationStatus.setText({},juce::dontSendNotification);
     copyDeviceButton.setEnabled(audioProcessor.licenseDeviceCode().isNotEmpty());lastOnlineMessage.clear();resized();activationPanel.repaint();
 }
 void DuckPocketAudioProcessorEditor::importLicense(const juce::File& file){
-    juce::String error;if(audioProcessor.importLicenseFile(file,error))activationPanel.setVisible(false);else activationMessage.setText(error,juce::dontSendNotification);
+    juce::String error;if(audioProcessor.importLicenseFile(file,error))activationPanel.setVisible(false);else activationStatus.setText(error,juce::dontSendNotification);
 }
 void DuckPocketAudioProcessorEditor::saveSize(){if(!ready||!preferences)return;audioProcessor.editorWidth.store(getWidth());preferences->setValue("duckPocket.ui.compactWidth",getWidth());preferences->saveIfNeeded();resizeStamp=0;}
 void DuckPocketAudioProcessorEditor::invalidateChrome(){chromeValid=false;activationBackdropDirty=true;repaint();}
@@ -367,17 +371,26 @@ void DuckPocketAudioProcessorEditor::resized(){
     expandButton.setBounds(scaled(320,753,160,36));
     listenButton.setVisible(filtersExpanded);listenButton.setBounds(scaled(477,789,32,32));
     activationPanel.setBounds(getLocalBounds());
-    const int cardWidth=juce::jmin(360,getWidth()-32),cardHeight=offlineActivation?294:220;
+    const float baseHeight=offlineActivation?318.f:244.f;
+    // Enlarge all content together. At the minimum editor size, fit the card
+    // proportionally rather than clipping controls outside the host window.
+    const float scale=juce::jmin(1.5f,float(getWidth()-24)/360.f,float(getHeight()-24)/baseHeight);
+    activationPanel.uiScale=scale;
+    const int cardWidth=juce::roundToInt(360*scale),cardHeight=juce::roundToInt(baseHeight*scale);
     activationPanel.card=juce::Rectangle<int>(cardWidth,cardHeight).withCentre(getLocalBounds().getCentre());
     activationPanel.palette=look.tokens();
-    const auto card=activationPanel.card;const int left=card.getX()+20,top=card.getY(),panelWidth=cardWidth-40;
-    activationTitle.setBounds(left,top+20,panelWidth,26);
-    onlineButton.setBounds(left,top+62,(panelWidth-8)/2,32);offlineButton.setBounds(left+(panelWidth+8)/2,top+62,(panelWidth-8)/2,32);
-    activationMessage.setBounds(left,top+104,panelWidth,48);
-    licenseInput.setBounds(left,top+166,panelWidth-90,32);activateButton.setBounds(left+panelWidth-82,top+166,82,32);
-    deviceCodeLabel.setBounds(left,top+160,panelWidth,18);
-    deviceCodeInput.setBounds(left,top+184,panelWidth,44);
-    copyDeviceButton.setBounds(left,top+242,(panelWidth-8)/2,32);chooseLicenseButton.setBounds(left+(panelWidth+8)/2,top+242,(panelWidth-8)/2,32);
+    const auto card=activationPanel.card;
+    auto bounds=[&](float x,float y,float w,float h){return (juce::Rectangle<float>(x,y,w,h)*scale).toNearestInt().translated(card.getX(),card.getY());};
+    activationTitle.setBounds(bounds(20,20,320,26));
+    onlineButton.setBounds(bounds(20,62,156,32));offlineButton.setBounds(bounds(184,62,156,32));
+    activationMessage.setBounds(bounds(20,104,320,44));activationStatus.setBounds(bounds(20,148,320,36));
+    licenseInput.setBounds(bounds(20,190,230,32));activateButton.setBounds(bounds(258,190,82,32));
+    deviceCodeLabel.setBounds(bounds(20,184,320,18));deviceCodeInput.setBounds(bounds(20,208,320,44));
+    copyDeviceButton.setBounds(bounds(20,266,156,32));chooseLicenseButton.setBounds(bounds(184,266,156,32));
+    activationTitle.setFont(pocketFont(19*scale,false,true));activationMessage.setFont(uiFont(12*scale));activationStatus.setFont(uiFont(12*scale));deviceCodeLabel.setFont(uiFont(12*scale));
+    licenseInput.setFont(uiFont(13*scale));deviceCodeInput.setFont(uiFont(11*scale));
+    for(auto* input:{&licenseInput,&deviceCodeInput})input->setIndents(juce::roundToInt(8*scale),juce::roundToInt(6*scale));
+    for(auto* button:{&activateButton,&onlineButton,&offlineButton,&copyDeviceButton,&chooseLicenseButton})button->getProperties().set("pocket.activationScale",scale);
     updateActivationColours();
     activationBackdropDirty=true;
     activationPanel.toFront(false);
@@ -675,6 +688,7 @@ void DuckPocketAudioProcessorEditor::captureBlurSnapshot(){
 void DuckPocketAudioProcessorEditor::updateActivationColours(){
     const auto palette=look.tokens();activationPanel.palette=palette;
     activationTitle.setColour(juce::Label::textColourId,palette.ink);activationMessage.setColour(juce::Label::textColourId,palette.muted);deviceCodeLabel.setColour(juce::Label::textColourId,palette.muted);
+    activationStatus.setColour(juce::Label::textColourId,palette.out);
     for(auto* input:{&licenseInput,&deviceCodeInput}){
         input->setColour(juce::TextEditor::backgroundColourId,palette.glass);input->setColour(juce::TextEditor::textColourId,palette.ink);
         input->setColour(juce::TextEditor::outlineColourId,palette.border);input->setColour(juce::TextEditor::focusedOutlineColourId,palette.out);
@@ -764,7 +778,7 @@ void DuckPocketAudioProcessorEditor::frameTick(){
         if(!showActivation)activationPanel.backdrop={};
     }
     activateButton.setEnabled(!audioProcessor.onlineActivationBusy());
-    {const auto message=audioProcessor.onlineActivationMessage();if(message.isNotEmpty()&&message!=lastOnlineMessage){lastOnlineMessage=message;activationMessage.setText(message,juce::dontSendNotification);}}
+    {const auto message=audioProcessor.onlineActivationMessage();if(message.isNotEmpty()&&message!=lastOnlineMessage){lastOnlineMessage=message;activationStatus.setText(message,juce::dontSendNotification);}}
     if(showActivation){
         if(activationBackdropDirty&&(resizeStamp==0||juce::Time::getMillisecondCounterHiRes()-resizeStamp>100))captureActivationBackdrop();
         PocketTrace discard;while(audioProcessor.popTrace(discard)){}

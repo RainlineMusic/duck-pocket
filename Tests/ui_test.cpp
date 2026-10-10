@@ -13,6 +13,7 @@ struct DuckUiTestAccess {
  static std::uint64_t nativeCaches(DuckPocketAudioProcessorEditor& e){return e.nativeChromeBuildCount;}
 #endif
  static bool activationShown(DuckPocketAudioProcessorEditor& e){return e.activationPanel.isVisible();}
+ static bool activationInstructionRetained(DuckPocketAudioProcessorEditor& e){return e.activationMessage.getText()=="Enter the license key from your purchase email."&&e.activationStatus.getText().isNotEmpty()&&e.activationStatus.getY()>=e.activationMessage.getBottom();}
  static juce::Image activationBackdrop(DuckPocketAudioProcessorEditor& e){return e.activationPanel.backdrop;}
  static bool activationControlsFit(DuckPocketAudioProcessorEditor& e){
   const auto card=e.activationPanel.card;
@@ -103,6 +104,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
   const auto backdrop=DuckUiTestAccess::activationBackdrop(*e);check(backdrop.isValid()&&DuckUiTestAccess::activationControlsFit(*e),"centered activation card and cached background");
   DuckUiTestAccess::tick(*e);check(backdrop==DuckUiTestAccess::activationBackdrop(*e),"idle activation reuses the blurred image");
   DuckUiTestAccess::invalidKey(*e);check(!p.isActivated()&&DuckUiTestAccess::activationShown(*e),"invalid key keeps overlay and audio locked");
+  check(DuckUiTestAccess::activationInstructionRetained(*e),"activation error appears below the unchanged instruction");
   auto image=e->createComponentSnapshot(e->getLocalBounds(),true,1.f);auto stream=output.getChildFile("activation.png").createOutputStream();check(stream&&juce::PNGImageFormat().writeImageToStream(image,*stream),"activation capture");
   check(!DuckUiTestAccess::fileDropAccepted(*e),"online mode does not import dragged files");
   DuckUiTestAccess::activationMode(*e,true);check(DuckUiTestAccess::fileDropAccepted(*e),"offline file drop enabled");

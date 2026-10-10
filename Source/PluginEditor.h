@@ -144,6 +144,7 @@ private:
         juce::Image backdrop;
         juce::Rectangle<int> card;
         PocketTokens palette=PocketTokens::forTheme(PocketTheme::SolidDark);
+        float uiScale=1.5f;
         std::function<void(const juce::File&)> onFile;
         bool isInterestedInFileDrag(const juce::StringArray& files) override {return offline&&files.size()==1;}
         void fileDragEnter(const juce::StringArray&,int,int) override {dragging=true;repaint();}
@@ -154,13 +155,13 @@ private:
             if(backdrop.isValid())g.drawImage(backdrop,getLocalBounds().toFloat(),juce::RectanglePlacement::stretchToFit);
             g.setColour(juce::Colours::black.withAlpha(.38f));g.fillAll();
             auto r=card.toFloat();
-            for(int i=3;i>0;--i){g.setColour(juce::Colours::black.withAlpha(.07f));g.fillRoundedRectangle(r.expanded(float(i*4)).translated(0,float(i*2)),12.f+float(i*2));}
-            g.setColour(palette.chassis.brighter(.08f));g.fillRoundedRectangle(r,12);
-            g.setColour(dragging?palette.out:palette.border.withAlpha(.8f));g.drawRoundedRectangle(r.reduced(.5f),12,dragging?1.5f:1.f);
+            for(int i=3;i>0;--i){g.setColour(juce::Colours::black.withAlpha(.07f));g.fillRoundedRectangle(r.expanded(float(i*4)*uiScale).translated(0,float(i*2)*uiScale),(12.f+float(i*2))*uiScale);}
+            g.setColour(palette.chassis.brighter(.08f));g.fillRoundedRectangle(r,12*uiScale);
+            g.setColour(dragging?palette.out:palette.border.withAlpha(.8f));g.drawRoundedRectangle(r.reduced(.5f),12*uiScale,dragging?1.5f:1.f);
             g.setColour(palette.ink.withAlpha(.06f));g.drawHorizontalLine(card.getY()+1,float(card.getX()+12),float(card.getRight()-12));
         }
     } activationPanel;
-    juce::Label activationTitle,activationMessage;
+    juce::Label activationTitle,activationMessage,activationStatus;
     juce::TextEditor licenseInput;
     juce::TextButton activateButton{"OK"},onlineButton{"Online (Recommended)"},offlineButton{"Offline"},copyDeviceButton{"Copy code"},chooseLicenseButton{"Choose file"};
     juce::TextEditor deviceCodeInput;
