@@ -9,6 +9,7 @@ DuckPocketAudioProcessor::DuckPocketAudioProcessor()
         .withOutput("Output",juce::AudioChannelSet::stereo(),true)),
       parameters(*this,nullptr,"PARAMETERS",layout())
 {
+    license->checkOnOpen();
     amount=parameters.getRawParameterValue("amount");
     duration=parameters.getRawParameterValue("duration");
     low=parameters.getRawParameterValue("scLow");
@@ -285,6 +286,7 @@ void DuckPocketAudioProcessor::setStateInformation(const void* d,int n)
     }
 }
 
-juce::AudioProcessorEditor* DuckPocketAudioProcessor::createEditor(){return new DuckPocketAudioProcessorEditor(*this);}
+juce::AudioProcessorEditor* DuckPocketAudioProcessor::createEditor(){license->checkOnOpen();return new DuckPocketAudioProcessorEditor(*this);}
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter(){return new DuckPocketAudioProcessor();}
+
 
