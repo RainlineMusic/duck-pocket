@@ -13,6 +13,12 @@ struct DuckUiTestAccess {
  static std::uint64_t nativeCaches(DuckPocketAudioProcessorEditor& e){return e.nativeChromeBuildCount;}
 #endif
  static bool activationShown(DuckPocketAudioProcessorEditor& e){return e.activationPanel.isVisible();}
+ static juce::Image activationBackdrop(DuckPocketAudioProcessorEditor& e){return e.activationPanel.backdrop;}
+ static bool activationControlsFit(DuckPocketAudioProcessorEditor& e){
+  const auto card=e.activationPanel.card;
+  for(auto* child:e.activationPanel.getChildren())if(child->isVisible()&&!card.contains(child->getBounds()))return false;
+  return e.getLocalBounds().contains(card);
+ }
  static void activationMode(DuckPocketAudioProcessorEditor& e,bool offline){e.setActivationMode(offline);}
  static juce::String deviceCode(DuckPocketAudioProcessorEditor& e){return e.deviceCodeInput.getText();}
  static bool fileDropAccepted(DuckPocketAudioProcessorEditor& e){return e.activationPanel.isInterestedInFileDrag(juce::StringArray{"one.ducklicense"});}
@@ -94,6 +100,8 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
  std::unique_ptr<DuckPocketAudioProcessorEditor> e(static_cast<DuckPocketAudioProcessorEditor*>(p.createEditor()));const bool native=argc>2&&juce::String(argv[2])=="--native";if(native){e->addToDesktop(juce::ComponentPeer::windowIsTemporary);e->setVisible(true);}if(!glSmoke)check(!DuckUiTestAccess::rangesVisible(*e),"fresh filter panel defaults closed");DuckUiTestAccess::collapse(*e,true);e->setSize(800,905);DuckUiTestAccess::settle(*e);
  if(!glSmoke){
   DuckLicenseTestAccess::activate(p,false);DuckUiTestAccess::tick(*e);check(DuckUiTestAccess::activationShown(*e),"activation overlay shown without license");
+  const auto backdrop=DuckUiTestAccess::activationBackdrop(*e);check(backdrop.isValid()&&DuckUiTestAccess::activationControlsFit(*e),"centered activation card and cached background");
+  DuckUiTestAccess::tick(*e);check(backdrop==DuckUiTestAccess::activationBackdrop(*e),"idle activation reuses the blurred image");
   DuckUiTestAccess::invalidKey(*e);check(!p.isActivated()&&DuckUiTestAccess::activationShown(*e),"invalid key keeps overlay and audio locked");
   auto image=e->createComponentSnapshot(e->getLocalBounds(),true,1.f);auto stream=output.getChildFile("activation.png").createOutputStream();check(stream&&juce::PNGImageFormat().writeImageToStream(image,*stream),"activation capture");
   check(!DuckUiTestAccess::fileDropAccepted(*e),"online mode does not import dragged files");
@@ -102,6 +110,7 @@ int main(int argc,char** argv){const bool glSmoke=argc>1&&juce::String(argv[1])=
   DuckUiTestAccess::invalidFile(*e);check(!p.isActivated()&&DuckUiTestAccess::activationShown(*e),"invalid dropped file stays locked");
   {auto capture=e->createComponentSnapshot(e->getLocalBounds(),true,1.f);auto file=output.getChildFile("activation-offline.png").createOutputStream();check(file&&juce::PNGImageFormat().writeImageToStream(capture,*file),"offline activation capture");}
   e->setSize(400,453);DuckUiTestAccess::activationMode(*e,true);
+  check(DuckUiTestAccess::activationControlsFit(*e),"offline controls fit the smallest plugin window");
   {auto capture=e->createComponentSnapshot(e->getLocalBounds(),true,1.f);auto file=output.getChildFile("activation-offline-compact.png").createOutputStream();check(file&&juce::PNGImageFormat().writeImageToStream(capture,*file),"compact offline activation capture");}
   e->setSize(800,905);DuckUiTestAccess::activationMode(*e,false);
   DuckLicenseTestAccess::activate(p);DuckUiTestAccess::tick(*e);check(!DuckUiTestAccess::activationShown(*e),"activation shared with open editor");

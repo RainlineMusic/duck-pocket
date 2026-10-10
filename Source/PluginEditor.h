@@ -141,12 +141,24 @@ private:
     PocketLook look;
     struct ActivationPanel : juce::Component,juce::FileDragAndDropTarget {
         bool offline=false,dragging=false;
+        juce::Image backdrop;
+        juce::Rectangle<int> card;
+        PocketTokens palette=PocketTokens::forTheme(PocketTheme::SolidDark);
         std::function<void(const juce::File&)> onFile;
         bool isInterestedInFileDrag(const juce::StringArray& files) override {return offline&&files.size()==1;}
         void fileDragEnter(const juce::StringArray&,int,int) override {dragging=true;repaint();}
         void fileDragExit(const juce::StringArray&) override {dragging=false;repaint();}
         void filesDropped(const juce::StringArray& files,int,int) override {dragging=false;repaint();if(offline&&files.size()==1&&onFile)onFile(juce::File(files[0]));}
-        void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff171c25));if(dragging){g.setColour(juce::Colour(0xff8caff0));g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(8),6,2);}}
+        void paint(juce::Graphics& g) override {
+            g.fillAll(palette.chassis);
+            if(backdrop.isValid())g.drawImage(backdrop,getLocalBounds().toFloat(),juce::RectanglePlacement::stretchToFit);
+            g.setColour(juce::Colours::black.withAlpha(.38f));g.fillAll();
+            auto r=card.toFloat();
+            for(int i=3;i>0;--i){g.setColour(juce::Colours::black.withAlpha(.07f));g.fillRoundedRectangle(r.expanded(float(i*4)).translated(0,float(i*2)),12.f+float(i*2));}
+            g.setColour(palette.chassis.brighter(.08f));g.fillRoundedRectangle(r,12);
+            g.setColour(dragging?palette.out:palette.border.withAlpha(.8f));g.drawRoundedRectangle(r.reduced(.5f),12,dragging?1.5f:1.f);
+            g.setColour(palette.ink.withAlpha(.06f));g.drawHorizontalLine(card.getY()+1,float(card.getX()+12),float(card.getRight()-12));
+        }
     } activationPanel;
     juce::Label activationTitle,activationMessage;
     juce::TextEditor licenseInput;
@@ -155,7 +167,10 @@ private:
     juce::Label deviceCodeLabel;
     std::unique_ptr<juce::FileChooser> licenseChooser;
     bool offlineActivation=false;
+    bool activationBackdropDirty=true;
     juce::String lastOnlineMessage;
+    void captureActivationBackdrop();
+    void updateActivationColours();
     void setActivationMode(bool offline);
     void importLicense(const juce::File&);
     ModernDial influence{look,"Influence","Depth","%",0xff5987ff};
