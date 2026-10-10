@@ -21,7 +21,7 @@ env:
 jobs:
   macos:
     runs-on: macos-14
-    timeout-minutes: 90
+    timeout-minutes: 150
     env:
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -112,7 +112,7 @@ jobs:
       # AAX is signed with PACE locally; notarize the final PACE output locally.
       - name: Notarize and staple VST3 AU and CLAP
         if: steps.apple-signing.outputs.enabled == 'true'
-        timeout-minutes: 55
+        timeout-minutes: 100
         shell: bash
         run: |
           set -euo pipefail
@@ -138,11 +138,16 @@ jobs:
           echo "Apple submission ID: $submission_id"
           # Keep the submission ID even when Apple's processing exceeds the wait limit.
           wait_rc=0
-          xcrun notarytool wait "$submission_id" "${auth[@]}" --timeout 45m --output-format json > notary-logs/wait.json || wait_rc=$?
+          xcrun notarytool wait "$submission_id" "${auth[@]}" --timeout 90m --output-format json > notary-logs/wait.json || wait_rc=$?
           xcrun notarytool info "$submission_id" "${auth[@]}" --output-format json > notary-logs/info.json
           if ! python3 -c 'import json,sys; r=json.load(open("notary-logs/info.json")); print("Notarization status:",r.get("status")); sys.exit(0 if r.get("status") == "Accepted" else 1)'; then
             xcrun notarytool log "$submission_id" "${auth[@]}" notary-logs/apple-log.json || true
-            echo "::error::Apple has not accepted submission $submission_id (wait exit code $wait_rc). See notarization-log-macos."
+            status=$(python3 -c 'import json; print(json.load(open("notary-logs/info.json")).get("status", "Unknown"))')
+            if [[ "$status" == "In Progress" ]]; then
+              echo "::error::Apple is still processing submission $submission_id after the wait limit; this is not a rejection. See notarization-log-macos."
+            else
+              echo "::error::Apple notarization status is $status for submission $submission_id (wait exit code $wait_rc). See notarization-log-macos."
+            fi
             exit 1
           fi
           for bundle in "${bundles[@]}"; do
