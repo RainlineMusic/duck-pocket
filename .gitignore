@@ -1,0 +1,7 @@
+/build*/
+/JUCE/
+/_deps/
+/installers/
+__pycache__/
+*.pem
+*.key

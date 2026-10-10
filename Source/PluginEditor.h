@@ -139,14 +139,48 @@ private:
     using SliderAttachment=juce::AudioProcessorValueTreeState::SliderAttachment;
     DuckPocketAudioProcessor& audioProcessor;
     PocketLook look;
-    juce::TooltipWindow tooltips{this,700};
+    struct ActivationPanel : juce::Component,juce::FileDragAndDropTarget {
+        bool offline=false,dragging=false;
+        juce::Image backdrop;
+        juce::Rectangle<int> card;
+        PocketTokens palette=PocketTokens::forTheme(PocketTheme::SolidDark);
+        float uiScale=1.5f;
+        std::function<void(const juce::File&)> onFile;
+        bool isInterestedInFileDrag(const juce::StringArray& files) override {return offline&&files.size()==1;}
+        void fileDragEnter(const juce::StringArray&,int,int) override {dragging=true;repaint();}
+        void fileDragExit(const juce::StringArray&) override {dragging=false;repaint();}
+        void filesDropped(const juce::StringArray& files,int,int) override {dragging=false;repaint();if(offline&&files.size()==1&&onFile)onFile(juce::File(files[0]));}
+        void paint(juce::Graphics& g) override {
+            g.fillAll(palette.chassis);
+            if(backdrop.isValid())g.drawImage(backdrop,getLocalBounds().toFloat(),juce::RectanglePlacement::stretchToFit);
+            g.setColour(juce::Colours::black.withAlpha(.38f));g.fillAll();
+            auto r=card.toFloat();
+            for(int i=3;i>0;--i){g.setColour(juce::Colours::black.withAlpha(.07f));g.fillRoundedRectangle(r.expanded(float(i*4)*uiScale).translated(0,float(i*2)*uiScale),(12.f+float(i*2))*uiScale);}
+            g.setColour(palette.chassis.brighter(.08f));g.fillRoundedRectangle(r,12*uiScale);
+            g.setColour(dragging?palette.out:palette.border.withAlpha(.8f));g.drawRoundedRectangle(r.reduced(.5f),12*uiScale,dragging?1.5f:1.f);
+            g.setColour(palette.ink.withAlpha(.06f));g.drawHorizontalLine(card.getY()+1,float(card.getX()+12),float(card.getRight()-12));
+        }
+    } activationPanel;
+    juce::Label activationTitle,activationMessage,activationStatus;
+    juce::TextEditor licenseInput;
+    juce::TextButton activateButton{"OK"},onlineButton{"Online (Recommended)"},offlineButton{"Offline"},copyDeviceButton{"Copy code"},chooseLicenseButton{"Choose file"};
+    juce::TextEditor deviceCodeInput;
+    juce::Label deviceCodeLabel;
+    std::unique_ptr<juce::FileChooser> licenseChooser;
+    bool offlineActivation=false;
+    bool activationBackdropDirty=true;
+    juce::String lastOnlineMessage;
+    void captureActivationBackdrop();
+    void updateActivationColours();
+    void setActivationMode(bool offline);
+    void importLicense(const juce::File&);
     ModernDial influence{look,"Influence","Depth","%",0xff5987ff};
     ModernDial duration{look,"Duration","Sidechain length","ms",0xff32d4cb,true,false,false,"AUTO"};
     ModernDial attack{look,"Attack","ms","ms",0,false,false,true};
     HeaderValue outputGain{look,true},mix{look,false};
     ResettableRangeSlider sidechainRange,processingRange;
     ModernDial midSide{look,"M/S Balance","","balance",0,false,false,true};
-    juce::TextButton settingsButton{"settings"},bypassButton{"power"},freezeButton{"freeze"},expandButton{"expand"};
+    juce::TextButton settingsButton{"settings"},bypassButton{"power"},freezeButton{"freeze"},expandButton{"expand"},listenButton{"listen"};
     std::unique_ptr<SliderAttachment> influenceAttach,durationAttach,outputAttach,msAttach,mixAttach;
     std::unique_ptr<juce::ParameterAttachment> attackAttach;
     bool attackUsesMs=false,updatingAttack=false,attackGesture=false;
@@ -216,3 +250,4 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DuckPocketAudioProcessorEditor)
 };
+

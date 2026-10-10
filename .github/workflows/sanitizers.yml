@@ -30,8 +30,9 @@ jobs:
       - name: Configure instrumented software renderer
         run: cmake -S . -B instrumented -DCMAKE_BUILD_TYPE=Debug -DJUCE_DIR="$PWD/JUCE" -DDUCK_ENABLE_OPENGL=OFF -DDUCK_BUILD_UI_TESTS=ON -DDUCK_SANITIZER=${{ matrix.sanitizer }}
       - name: Build regression and UI tests
-        run: cmake --build instrumented --parallel 3 --target PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null Pocket_mix_attack PocketProcessorTest PocketUITest
+        run: cmake --build instrumented --parallel 3 --target PocketV10Test PocketShortDurationTest Pocket_numerical Pocket_relative_duration Pocket_null Pocket_mix_attack Pocket_lookahead PocketLicenseTest PocketProcessorTest PocketUITest
       - name: Run instrumented regression suite
         run: ctest --test-dir instrumented --output-on-failure
       - name: Exercise software rendering
         run: instrumented/PocketUITest_artefacts/Debug/PocketUITest "$PWD/instrumented-captures"
+
