@@ -18,6 +18,12 @@ int main(){
  check(!pocket::verifyLicense(testLicense,pocket::deviceCodeFromSystemId("other-machine","test"),testModulus),"copied license rejected on another device");
  check(!pocket::verifyLicense(testLicense,juce::String(),testModulus),"missing system ID cannot activate");
  check(pocket::canonicalOnlineKey("duck-7k3m-9x2p-6r8n-4w5t")=="DUCK7K3M9X2P6R8N4W5T"&&pocket::canonicalOnlineKey("DUCK-invalid").isEmpty(),"short key syntax");
+ auto reply=std::make_unique<juce::DynamicObject>();reply->setProperty("valid",false);reply->setProperty("error","revoked");reply->setProperty("license_id",juce::String(testLicense).substring(4,40));reply->setProperty("device",testDevice);reply->setProperty("token_hash",juce::SHA256(testLicense,size_t(juce::String(testLicense).getNumBytesAsUTF8())).toHexString());juce::var response(reply.release());
+ check(pocket::verificationRevoked(response,testLicense,testDevice,200),"explicit revocation bound to token");
+ check(!pocket::verificationRevoked(response,testLicense,testDevice,503),"server error preserves offline activation");
+ check(!pocket::verificationRevoked(response,testLicense,"another-device",200),"unrelated response cannot revoke");
+ check(!pocket::verificationRevoked(juce::var(),testLicense,testDevice,200),"malformed response keeps activation");
+ response.getDynamicObject()->setProperty("valid","false");check(!pocket::verificationRevoked(response,testLicense,testDevice,200),"nonboolean validity ignored");
  auto p=std::make_unique<DuckPocketAudioProcessor>();DuckLicenseTestAccess::active(*p,false);
  juce::String error;check(!p->activateLicense(testLicense,error),"foreign signing key not persisted");
  auto temp=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("duck-invalid-license",".ducklicense");
@@ -44,3 +50,4 @@ int main(){
  juce::MemoryBlock state;p->getStateInformation(state);DuckLicenseTestAccess::active(*p,false);p->setStateInformation(state.getData(),int(state.getSize()));check(!p->isActivated(),"project state cannot activate");
  std::cout<<"PASS license signatures, tampering, unlicensed dry, monitor, state\n";
 }
+
